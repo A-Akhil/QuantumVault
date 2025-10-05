@@ -8,6 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import HttpResponse, Http404, JsonResponse
 from django.core.exceptions import PermissionDenied
+from django.core.paginator import Paginator
 from django.conf import settings
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
@@ -702,11 +703,23 @@ def audit_logs_view(request):
     """
     View audit logs for the current user.
     """
-    logs = AuditLog.objects.filter(
+    logs_queryset = AuditLog.objects.filter(
         user_email=request.user.email
-    ).order_by('-timestamp')[:50]  # Last 50 entries
+    ).order_by('-timestamp')
+
+    paginator = Paginator(logs_queryset, 25)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'logs': page_obj.object_list,
+        'page_obj': page_obj,
+        'paginator': paginator,
+        'page_range': paginator.get_elided_page_range(page_obj.number, on_each_side=1, on_ends=1),
+        'is_paginated': page_obj.has_other_pages(),
+    }
     
-    return render(request, 'core/audit_logs.html', {'logs': logs})
+    return render(request, 'core/audit_logs.html', context)
 
 
 @login_required

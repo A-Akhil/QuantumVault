@@ -1,4 +1,5 @@
 {% extends 'core/base.html' %}
+{% load humanize %}
 
 {% block title %}Audit Logs - Quantum-Safe File Storage{% endblock %}
 
@@ -69,6 +70,9 @@
                                         {% if log.file %}
                                             <i class="bi bi-file-earmark me-1 text-muted"></i>
                                             {{ log.file.filename }}
+                                        {% elif log.details.filename %}
+                                            <i class="bi bi-file-earmark me-1 text-muted"></i>
+                                            {{ log.details.filename }}
                                         {% else %}
                                             <span class="text-muted">N/A</span>
                                         {% endif %}
@@ -76,9 +80,25 @@
                                     <td>
                                         {% if log.details %}
                                             <small class="text-muted">
-                                                {% for key, value in log.details.items %}
-                                                    {{ key }}: {{ value }}{% if not forloop.last %}, {% endif %}
-                                                {% endfor %}
+                                                {% if log.action == 'upload' %}
+                                                    {% if log.details.file_size %}
+                                                        Size: {{ log.details.file_size|filesizeformat }}
+                                                    {% endif %}
+                                                    {% if log.details.recipients %}
+                                                        <br>Recipients: {{ log.details.recipients|length }}
+                                                    {% endif %}
+                                                    {% if log.details.description %}
+                                                        <br>Desc: {{ log.details.description|truncatechars:30 }}
+                                                    {% endif %}
+                                                {% elif log.action == 'download' %}
+                                                    {% if log.details.file_size %}
+                                                        Size: {{ log.details.file_size|filesizeformat }}
+                                                    {% endif %}
+                                                {% else %}
+                                                    {% for key, value in log.details.items %}
+                                                        {{ key }}: {{ value|truncatechars:20 }}{% if not forloop.last %}, {% endif %}
+                                                    {% endfor %}
+                                                {% endif %}
                                             </small>
                                         {% else %}
                                             <span class="text-muted">No details</span>

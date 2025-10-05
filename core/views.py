@@ -238,7 +238,7 @@ def dashboard_view(request):
 @login_required
 def upload_file_view(request):
     """
-    File upload with AES encryption and Kyber key wrapping.
+    Multiple file upload with AES encryption and Kyber key wrapping.
     """
     if request.method == 'POST':
         form = FileUploadForm(request.POST, request.FILES)
@@ -248,136 +248,151 @@ def upload_file_view(request):
         # Filter out empty values and the current user's email
         recipients = [email for email in selected_recipients if email and email != request.user.email]
         
-        if form.is_valid() and recipients:
-            try:
-                uploaded_file = request.FILES['file']
-                description = form.cleaned_data.get('description', '')
-                
-                # Read file data
-                file_data = uploaded_file.read()
-                
-                # Encrypt file with AES-256-GCM
-                logger.info(f"Encrypting file {uploaded_file.name} for user {request.user.email}")
-                aes_key, nonce, ciphertext = aes_encrypt_file(file_data)
-                
-                # Create encrypted file record
-                encrypted_file = EncryptedFile(
-                    filename=uploaded_file.name,
-                    original_filename=uploaded_file.name,
-                    file_size=len(file_data),
-                    mime_type=uploaded_file.content_type or 'application/octet-stream',
-                    uploaded_by=request.user,
-                    aes_nonce=nonce,
-                    wrapped_keys={}
-                )
-                
-                # Save encrypted file to filesystem
-                upload_dir = settings.QUANTUM_STORAGE_SETTINGS['ENCRYPTED_FILES_DIR']
-                os.makedirs(upload_dir, exist_ok=True)
-                
-                file_id = f"{timezone.now().strftime('%Y%m%d_%H%M%S')}_{request.user.id}_{uploaded_file.name}"
-                file_path = os.path.join(upload_dir, file_id)
-                
-                with open(file_path, 'wb') as f:
-                    f.write(ciphertext)
-                
-                encrypted_file.file_path = file_path
-                
-                # Wrap AES key for each recipient (including uploader)
-                all_recipients = recipients + [request.user.email]
-                all_recipients = list(set(all_recipients))  # Remove duplicates
-                
-                for recipient_email in all_recipients:
-                    try:
-                        recipient_user = QuantumUser.objects.get(email=recipient_email)
-                        kyber_ct, key_nonce, wrapped_key = wrap_aes_key_for_user(
-                            aes_key, recipient_user.kyber_public_key
-                        )
-                        encrypted_file.add_wrapped_key_for_user(recipient_email, wrapped_key, key_nonce)
-                        
-                        # Store Kyber ciphertext separately for unwrapping
-                        encrypted_file.wrapped_keys[recipient_email + "_kyber_ct"] = {
-                            'ciphertext': base64.b64encode(kyber_ct).decode('utf-8'),
-                            'key_nonce': base64.b64encode(b"").decode('utf-8')  # Not used for Kyber CT
-                        }
-                        
-                    except QuantumUser.DoesNotExist:
-                        logger.error(f"Recipient user not found: {recipient_email}")
-                        continue
-                
-                # Create metadata for signature
-                metadata = create_file_metadata_for_signature(
-                    uploaded_file.name,
-                    len(file_data),
-                    recipients,
-                    request.user.email
-                )
-                
-                # Sign metadata with uploader's Dilithium key
-                signature = dilithium_sign(request.user.dilithium_private_key, metadata)
-                encrypted_file.metadata_signature = signature
-                
-                # Store original recipients list for signature verification
-                encrypted_file.wrapped_keys['_original_recipients'] = recipients
-                
-                # Save to database
-                encrypted_file.save()
-                
-                # Create access records
-                for recipient_email in recipients:
-                    FileAccess.objects.get_or_create(
-                        file=encrypted_file,
-                        user_email=recipient_email,
-                        defaults={'granted_by': request.user}
+        # Get multiple files from the 'files' input
+        uploaded_files = request.FILES.getlist('files')
+        
+        if uploaded_files and recipients:
+            successful_uploads = []
+            failed_uploads = []
+            
+            for uploaded_file in uploaded_files:
+                try:
+                    description = form.cleaned_data.get('description', '') if form.is_valid() else ''
+                    
+                    # Read file data
+                    file_data = uploaded_file.read()
+                    
+                    # Encrypt file with AES-256-GCM
+                    logger.info(f"Encrypting file {uploaded_file.name} for user {request.user.email}")
+                    aes_key, nonce, ciphertext = aes_encrypt_file(file_data)
+                    
+                    # Create encrypted file record
+                    encrypted_file = EncryptedFile(
+                        filename=uploaded_file.name,
+                        original_filename=uploaded_file.name,
+                        file_size=len(file_data),
+                        mime_type=uploaded_file.content_type or 'application/octet-stream',
+                        uploaded_by=request.user,
+                        aes_nonce=nonce,
+                        wrapped_keys={}
                     )
-                
-                # Log successful upload
-                AuditLog.log_action(
-                    user_email=request.user.email,
-                    action='upload',
-                    file=encrypted_file,
-                    details={
-                        'filename': uploaded_file.name,
-                        'file_size': len(file_data),
-                        'recipients': recipients,
-                        'description': description
-                    },
-                    request=request,
-                    success=True
-                )
-                
-                messages.success(request, f'File "{uploaded_file.name}" uploaded and encrypted successfully! Shared with {len(recipients)} user(s).')
-                return redirect('dashboard')
-                
-            except Exception as e:
-                logger.error(f"File upload failed for user {request.user.email}: {e}")
-                messages.error(request, f'File upload failed: {str(e)}')
-                
-                # Log failed upload
-                AuditLog.log_action(
-                    user_email=request.user.email,
-                    action='upload',
-                    details={
-                        'filename': request.FILES.get('file', {}).get('name', 'unknown'),
-                        'error': str(e)
-                    },
-                    request=request,
-                    success=False,
-                    error_message=str(e)
-                )
-                
-                messages.error(request, 'Upload failed. Please try again.')
+                    
+                    # Save encrypted file to filesystem
+                    upload_dir = settings.QUANTUM_STORAGE_SETTINGS['ENCRYPTED_FILES_DIR']
+                    os.makedirs(upload_dir, exist_ok=True)
+                    
+                    timestamp = timezone.now().strftime('%Y%m%d_%H%M%S_%f')
+                    file_id = f"{timestamp}_{request.user.id}_{uploaded_file.name}"
+                    file_path = os.path.join(upload_dir, file_id)
+                    
+                    with open(file_path, 'wb') as f:
+                        f.write(ciphertext)
+                    
+                    encrypted_file.file_path = file_path
+                    
+                    # Wrap AES key for each recipient (including uploader)
+                    all_recipients = recipients + [request.user.email]
+                    all_recipients = list(set(all_recipients))  # Remove duplicates
+                    
+                    for recipient_email in all_recipients:
+                        try:
+                            recipient_user = QuantumUser.objects.get(email=recipient_email)
+                            kyber_ct, key_nonce, wrapped_key = wrap_aes_key_for_user(
+                                aes_key, recipient_user.kyber_public_key
+                            )
+                            encrypted_file.add_wrapped_key_for_user(recipient_email, wrapped_key, key_nonce)
+                            
+                            # Store Kyber ciphertext separately for unwrapping
+                            encrypted_file.wrapped_keys[recipient_email + "_kyber_ct"] = {
+                                'ciphertext': base64.b64encode(kyber_ct).decode('utf-8'),
+                                'key_nonce': base64.b64encode(b"").decode('utf-8')  # Not used for Kyber CT
+                            }
+                            
+                        except QuantumUser.DoesNotExist:
+                            logger.error(f"Recipient user not found: {recipient_email}")
+                            continue
+                    
+                    # Create metadata for signature
+                    metadata = create_file_metadata_for_signature(
+                        uploaded_file.name,
+                        len(file_data),
+                        recipients,
+                        request.user.email
+                    )
+                    
+                    # Sign metadata with uploader's Dilithium key
+                    signature = dilithium_sign(request.user.dilithium_private_key, metadata)
+                    encrypted_file.metadata_signature = signature
+                    
+                    # Store original recipients list for signature verification
+                    encrypted_file.wrapped_keys['_original_recipients'] = recipients
+                    
+                    # Save to database
+                    encrypted_file.save()
+                    
+                    # Create access records
+                    for recipient_email in recipients:
+                        FileAccess.objects.get_or_create(
+                            file=encrypted_file,
+                            user_email=recipient_email,
+                            defaults={'granted_by': request.user}
+                        )
+                    
+                    # Log successful upload
+                    AuditLog.log_action(
+                        user_email=request.user.email,
+                        action='upload',
+                        details={
+                            'filename': uploaded_file.name,
+                            'file_size': len(file_data),
+                            'recipients': recipients,
+                            'file_id': encrypted_file.id,
+                            'description': description
+                        },
+                        request=request,
+                        success=True
+                    )
+                    
+                    successful_uploads.append(uploaded_file.name)
+                    
+                except Exception as e:
+                    logger.error(f"File upload failed for {uploaded_file.name}: {e}")
+                    failed_uploads.append({'name': uploaded_file.name, 'error': str(e)})
+                    
+                    # Log failed upload
+                    AuditLog.log_action(
+                        user_email=request.user.email,
+                        action='upload',
+                        details={
+                            'filename': uploaded_file.name,
+                            'error': str(e)
+                        },
+                        request=request,
+                        success=False,
+                        error_message=str(e)
+                    )
+            
+            # Generate success/error messages
+            if successful_uploads:
+                if len(successful_uploads) == 1:
+                    messages.success(request, f'File "{successful_uploads[0]}" uploaded and encrypted successfully! Shared with {len(recipients)} user(s).')
+                else:
+                    messages.success(request, f'{len(successful_uploads)} files uploaded and encrypted successfully! Each shared with {len(recipients)} user(s).')
+            
+            if failed_uploads:
+                for failed in failed_uploads:
+                    messages.error(request, f'Failed to upload "{failed["name"]}" - {failed["error"]}')
+            
+            return redirect('dashboard')
         else:
-            if not recipients:
-                messages.error(request, 'Please select at least one user to share the file with.')
-            else:
-                messages.error(request, 'Please correct the errors in the form.')
+            if not uploaded_files:
+                messages.error(request, 'Please select at least one file to upload.')
+            elif not recipients:
+                messages.error(request, 'Please select at least one user to share the files with.')
     
-    else:
-        form = FileUploadForm()
-    
-    # Get available users (excluding current user)
+    # GET request - show upload form
     available_users = QuantumUser.objects.exclude(email=request.user.email).order_by('email')
+    form = FileUploadForm()
     
     return render(request, 'core/upload.html', {
         'form': form,

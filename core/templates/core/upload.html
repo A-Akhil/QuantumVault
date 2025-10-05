@@ -32,7 +32,7 @@
                     <div class="quantum-card">
                         <div class="card-header">
                             <h5 class="mb-0 fw-bold">
-                                <i class="bi bi-file-earmark-arrow-up me-2 text-primary"></i>Upload File
+                                <i class="bi bi-file-earmark-arrow-up me-2 text-primary"></i>Upload Files
                             </h5>
                         </div>
                         <div class="card-body">
@@ -42,17 +42,21 @@
                                 <!-- File Selection -->
                                 <div class="mb-4">
                                     <label for="id_file" class="form-label">
-                                        <i class="bi bi-file-text me-2"></i>Choose File
+                                        <i class="bi bi-files me-2"></i>Choose Files
                                     </label>
-                                    {{ form.file }}
-                                    {% if form.file.help_text %}
-                                        <div class="form-text text-muted">{{ form.file.help_text }}</div>
-                                    {% endif %}
-                                    {% if form.file.errors %}
-                                        <div class="invalid-feedback d-block">
-                                            {% for error in form.file.errors %}{{ error }}{% endfor %}
-                                        </div>
-                                    {% endif %}
+                                    <input type="file" class="form-control" id="id_file" name="files" multiple accept="*/*">
+                                    <div class="form-text text-muted">Select one or more files to upload. Hold Ctrl/Cmd to select multiple files.</div>
+                                </div>
+
+                                <!-- Selected Files Display -->
+                                <div class="mb-4" id="selectedFiles" style="display: none;">
+                                    <label class="form-label">
+                                        <i class="bi bi-list-ul me-2"></i>Selected Files
+                                    </label>
+                                    <div id="filesList" class="border rounded p-3" style="background: rgba(248, 250, 252, 0.8); max-height: 200px; overflow-y: auto;"></div>
+                                    <div class="form-text text-muted mt-2">
+                                        <span id="fileCount">0</span> file(s) selected • Total size: <span id="totalSize">0 KB</span>
+                                    </div>
                                 </div>
 
                                 <!-- Description (Optional) -->
@@ -74,8 +78,8 @@
                                             <div>
                                                 <h6 class="fw-bold mb-2 text-primary">Quantum-Safe Security</h6>
                                                 <p class="small mb-0 text-secondary">
-                                                    Your file will be encrypted with AES-256-GCM and keys will be protected using 
-                                                    Kyber768 post-quantum cryptography. Only you and the selected recipients will be able to decrypt and access the file.
+                                                    Your files will be encrypted with AES-256-GCM and keys will be protected using 
+                                                    Kyber768 post-quantum cryptography. Only you and the selected recipients will be able to decrypt and access the files.
                                                 </p>
                                             </div>
                                         </div>
@@ -88,7 +92,7 @@
                                         <i class="bi bi-x-circle me-1"></i>Cancel
                                     </a>
                                     <button type="submit" class="btn btn-primary quantum-btn" id="uploadBtn">
-                                        <i class="bi bi-cloud-upload me-2"></i>Upload & Encrypt File
+                                        <i class="bi bi-cloud-upload me-2"></i>Upload & Encrypt Files
                                     </button>
                                 </div>
                             </form>
@@ -315,9 +319,85 @@ document.addEventListener('DOMContentLoaded', function() {
     const selectAllBtn = document.getElementById('selectAll');
     const uploadForm = document.getElementById('uploadForm');
     const uploadBtn = document.getElementById('uploadBtn');
+    const fileInput = document.getElementById('id_file');
+    const selectedFiles = document.getElementById('selectedFiles');
+    const filesList = document.getElementById('filesList');
+    const fileCount = document.getElementById('fileCount');
+    const totalSize = document.getElementById('totalSize');
 
     // Store all user options for filtering
     const allOptions = Array.from(userSelect.options).filter(option => option.value !== '');
+    
+    // Handle file selection
+    fileInput.addEventListener('change', function() {
+        const files = Array.from(this.files);
+        updateFilesList(files);
+    });
+    
+    function updateFilesList(files) {
+        if (files.length === 0) {
+            selectedFiles.style.display = 'none';
+            return;
+        }
+        
+        selectedFiles.style.display = 'block';
+        fileCount.textContent = files.length;
+        
+        // Calculate total size
+        const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+        totalSize.textContent = formatFileSize(totalBytes);
+        
+        // Display file list
+        filesList.innerHTML = files.map((file, index) => `
+            <div class="d-flex align-items-center justify-content-between py-2 px-3 mb-2 rounded" style="background: white; border: 1px solid var(--border-color);">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-file-earmark me-2 text-primary"></i>
+                    <div>
+                        <div class="fw-medium">${file.name}</div>
+                        <small class="text-muted">${formatFileSize(file.size)} • ${getFileType(file.type)}</small>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeFile(${index})" title="Remove file">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+        `).join('');
+    }
+    
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
+    function getFileType(mimeType) {
+        if (!mimeType) return 'Unknown';
+        if (mimeType.startsWith('image/')) return 'Image';
+        if (mimeType.startsWith('video/')) return 'Video';
+        if (mimeType.startsWith('audio/')) return 'Audio';
+        if (mimeType.includes('pdf')) return 'PDF';
+        if (mimeType.includes('text/')) return 'Text';
+        if (mimeType.includes('document') || mimeType.includes('word')) return 'Document';
+        if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return 'Spreadsheet';
+        return 'File';
+    }
+    
+    // Global function to remove file from selection
+    window.removeFile = function(index) {
+        const dt = new DataTransfer();
+        const files = Array.from(fileInput.files);
+        
+        files.forEach((file, i) => {
+            if (i !== index) {
+                dt.items.add(file);
+            }
+        });
+        
+        fileInput.files = dt.files;
+        updateFilesList(Array.from(dt.files));
+    };
     
     // Handle search functionality
     userSearch.addEventListener('input', function() {
@@ -371,10 +451,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Form submission with progress modal
     uploadForm.addEventListener('submit', function(e) {
+        // Check if files are selected
+        if (fileInput.files.length === 0) {
+            e.preventDefault();
+            alert('Please select at least one file to upload.');
+            fileInput.focus();
+            return;
+        }
+        
+        // Check if recipients are selected
         const selectedOptions = Array.from(userSelect.selectedOptions).filter(option => option.value !== '');
         if (selectedOptions.length === 0) {
             e.preventDefault();
-            alert('Please select at least one user to share the file with.');
+            alert('Please select at least one user to share the files with.');
             userSearch.focus();
             return;
         }
@@ -393,9 +482,13 @@ document.addEventListener('DOMContentLoaded', function() {
             uploadForm.appendChild(hiddenInput);
         });
 
-        // Show upload progress modal
+        // Show upload progress modal with file count
         const uploadProgressModal = new bootstrap.Modal(document.getElementById('uploadProgressModal'));
         uploadProgressModal.show();
+        
+        // Update progress text to show file count
+        const progressText = document.querySelector('#uploadProgressModal .modal-body p');
+        progressText.textContent = `Encrypting and uploading ${fileInput.files.length} file(s)...`;
         
         // Disable upload button to prevent double submission
         uploadBtn.disabled = true;

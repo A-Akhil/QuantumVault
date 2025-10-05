@@ -415,3 +415,156 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 {% endblock %}
+
+<style>
+/* Search input focus styling */
+#userSearch:focus {
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+/* User select styling */
+#user_select {
+    min-height: 150px;
+}
+
+#user_select option:disabled {
+    background-color: #f8f9fa;
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Selected user badges */
+.badge .btn-close {
+    margin-left: 0.5rem;
+}
+
+/* Loading state */
+.uploading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const userSelect = document.getElementById('user_select');
+    const userSearch = document.getElementById('userSearch');
+    const selectedUsers = document.getElementById('selectedUsers');
+    const selectedUsersList = document.getElementById('selectedUsersList');
+    const clearSelectionBtn = document.getElementById('clearSelection');
+    const selectAllBtn = document.getElementById('selectAll');
+    const uploadForm = document.getElementById('uploadForm');
+    const uploadBtn = document.getElementById('uploadBtn');
+
+    // Store all user options for filtering
+    const allOptions = Array.from(userSelect.options).filter(option => option.value !== '');
+    
+    // Handle search functionality
+    userSearch.addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase().trim();
+        
+        // Clear current options (except disabled placeholder)
+        userSelect.innerHTML = '<option value="" disabled style="color: #6c757d;">Choose users to share with...</option>';
+        
+        // Filter and add matching options
+        const filteredOptions = allOptions.filter(option => {
+            const searchData = option.getAttribute('data-search') || '';
+            return searchData.includes(searchTerm);
+        });
+        
+        // Add filtered options back
+        filteredOptions.forEach(option => {
+            const clonedOption = option.cloneNode(true);
+            userSelect.appendChild(clonedOption);
+        });
+        
+        // Update placeholder if no matches
+        if (filteredOptions.length === 0 && searchTerm) {
+            userSelect.innerHTML = '<option value="" disabled style="color: #dc3545;">No users found matching "' + searchTerm + '"</option>';
+        }
+        
+        // Update selection display
+        updateSelectedUsersList();
+    });
+
+    // Handle user selection changes
+    userSelect.addEventListener('change', function() {
+        updateSelectedUsersList();
+    });
+
+    // Select all visible users
+    selectAllBtn.addEventListener('click', function() {
+        Array.from(userSelect.options).forEach(option => {
+            if (option.value !== '') {
+                option.selected = true;
+            }
+        });
+        updateSelectedUsersList();
+    });
+
+    // Clear selection button
+    clearSelectionBtn.addEventListener('click', function() {
+        userSelect.selectedIndex = -1;
+        Array.from(userSelect.options).forEach(option => option.selected = false);
+        updateSelectedUsersList();
+    });
+
+    // Form submission with progress modal
+    uploadForm.addEventListener('submit', function(e) {
+        const selectedOptions = Array.from(userSelect.selectedOptions).filter(option => option.value !== '');
+        if (selectedOptions.length === 0) {
+            e.preventDefault();
+            alert('Please select at least one user to share the file with.');
+            userSearch.focus();
+            return;
+        }
+
+        // Show upload progress modal
+        const uploadProgressModal = new bootstrap.Modal(document.getElementById('uploadProgressModal'));
+        uploadProgressModal.show();
+        
+        // Disable upload button to prevent double submission
+        uploadBtn.disabled = true;
+        uploadBtn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i>Uploading...';
+    });
+
+    function updateSelectedUsersList() {
+        const selected = Array.from(userSelect.selectedOptions).filter(option => option.value !== '');
+        
+        if (selected.length > 0) {
+            selectedUsers.style.display = 'block';
+            selectedUsersList.innerHTML = selected.map(option => 
+                `<span class="badge bg-light text-dark position-relative">
+                    <i class="bi bi-person me-1"></i>${option.text}
+                    <button type="button" class="btn-close btn-close-sm ms-2" 
+                            onclick="removeUser('${option.value}')" 
+                            aria-label="Remove ${option.text}"
+                            style="font-size: 0.7em; --bs-btn-close-color: #000; --bs-btn-close-opacity: 0.7;"></button>
+                </span>`
+            ).join('');
+        } else {
+            selectedUsers.style.display = 'none';
+            selectedUsersList.innerHTML = '';
+        }
+        
+        // Update select all button text
+        const visibleOptions = Array.from(userSelect.options).filter(option => option.value !== '');
+        selectAllBtn.textContent = visibleOptions.length > 0 ? `Select All Visible (${visibleOptions.length})` : 'Select All';
+    }
+
+    // Global function to remove user from selection
+    window.removeUser = function(userEmail) {
+        Array.from(userSelect.options).forEach(option => {
+            if (option.value === userEmail) {
+                option.selected = false;
+            }
+        });
+        updateSelectedUsersList();
+    };
+
+    // Focus on search input when page loads
+    userSearch.focus();
+});
+</script>
+{% endblock %}

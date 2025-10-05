@@ -3,120 +3,121 @@
 {% block title %}Dashboard - Quantum-Safe File Storage{% endblock %}
 
 {% block content %}
-<!-- Dashboard Header -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="quantum-card card">
-            <div class="card-body d-flex align-items-center justify-content-between">
-                <div>
-                    <h4 class="mb-1">
-                        <i class="bi bi-speedometer2 me-2"></i>Dashboard
-                    </h4>
-                    <p class="text-muted mb-0">Welcome back, {{ user.get_full_name|default:user.username }}!</p>
-                </div>
-                <div class="text-end">
-                    <a href="{% url 'upload_file' %}" class="btn btn-primary quantum-btn">
-                        <i class="bi bi-cloud-upload me-2"></i>Upload File
-                    </a>
+<div class="container py-4">
+    <!-- Dashboard Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="quantum-card">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <h4 class="mb-2 fw-bold">
+                            <i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard
+                        </h4>
+                        <p class="text-muted mb-0 fw-medium">Welcome back, {{ user.get_full_name|default:user.username }}!</p>
+                    </div>
+                    <div class="text-end">
+                        <a href="{% url 'upload_file' %}" class="btn btn-primary quantum-btn">
+                            <i class="bi bi-cloud-upload me-2"></i>Upload File
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Statistics Cards -->
-<div class="row mb-4">
-    <div class="col-md-3 col-sm-6 mb-3">
-        <div class="quantum-card card h-100">
-            <div class="card-body text-center">
-                <div class="mb-2">
-                    <i class="bi bi-file-earmark-arrow-up text-primary" style="font-size: 2rem;"></i>
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="quantum-card h-100">
+                <div class="card-body text-center">
+                    <div class="mb-3">
+                        <i class="bi bi-file-earmark-arrow-up text-primary" style="font-size: 2.5rem;"></i>
+                    </div>
+                    <h5 class="fw-bold mb-2">{{ my_files_count }}</h5>
+                    <p class="small text-muted mb-0">Files Uploaded</p>
                 </div>
-                <h5 class="card-title">{{ my_files_count }}</h5>
-                <p class="card-text small text-muted">Files Uploaded</p>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="quantum-card h-100">
+                <div class="card-body text-center">
+                    <div class="mb-3">
+                        <i class="bi bi-file-earmark-arrow-down text-success" style="font-size: 2.5rem;"></i>
+                    </div>
+                    <h5 class="fw-bold mb-2">{{ shared_files_count }}</h5>
+                    <p class="small text-muted mb-0">Files Shared With Me</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="quantum-card h-100">
+                <div class="card-body text-center">
+                    <div class="mb-3">
+                        <i class="bi bi-people text-warning" style="font-size: 2.5rem;"></i>
+                    </div>
+                    <h5 class="fw-bold mb-2">{{ total_shares }}</h5>
+                    <p class="small text-muted mb-0">Total Shares</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="quantum-card h-100">
+                <div class="card-body text-center">
+                    <div class="mb-3">
+                        <i class="bi bi-shield-check text-info" style="font-size: 2.5rem;"></i>
+                    </div>
+                    <h5 class="fw-bold mb-2">{{ recent_activities }}</h5>
+                    <p class="small text-muted mb-0">Recent Activities</p>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-3 col-sm-6 mb-3">
-        <div class="quantum-card card h-100">
-            <div class="card-body text-center">
-                <div class="mb-2">
-                    <i class="bi bi-file-earmark-arrow-down text-success" style="font-size: 2rem;"></i>
-                </div>
-                <h5 class="card-title">{{ shared_files_count }}</h5>
-                <p class="card-text small text-muted">Files Shared With Me</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 col-sm-6 mb-3">
-        <div class="quantum-card card h-100">
-            <div class="card-body text-center">
-                <div class="mb-2">
-                    <i class="bi bi-people text-warning" style="font-size: 2rem;"></i>
-                </div>
-                <h5 class="card-title">{{ total_shares }}</h5>
-                <p class="card-text small text-muted">Total Shares</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 col-sm-6 mb-3">
-        <div class="quantum-card card h-100">
-            <div class="card-body text-center">
-                <div class="mb-2">
-                    <i class="bi bi-shield-check text-info" style="font-size: 2rem;"></i>
-                </div>
-                <h5 class="card-title">{{ recent_activities }}</h5>
-                <p class="card-text small text-muted">Recent Activities</p>
-            </div>
-        </div>
-    </div>
-</div>
 
-<!-- Files Section -->
-<div class="row">
-    <!-- My Files -->
-    <div class="col-lg-6 mb-4">
-        <div class="quantum-card card h-100">
-            <div class="card-header d-flex align-items-center justify-content-between">
-                <h5 class="mb-0">
-                    <i class="bi bi-folder2-open me-2"></i>My Files
-                </h5>
-                <span class="badge bg-primary">{{ my_files_count }}</span>
-            </div>
-            <div class="card-body p-0">
-                {% if my_files %}
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th class="border-0">
-                                        <i class="bi bi-file-text me-1"></i>File
-                                    </th>
-                                    <th class="border-0">
-                                        <i class="bi bi-people me-1"></i>Shared
-                                    </th>
-                                    <th class="border-0">
-                                        <i class="bi bi-calendar me-1"></i>Uploaded
-                                    </th>
-                                    <th class="border-0">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for file in my_files %}
-                                <tr>
-                                    <td>
-                                        <div class="d-flex align-items-center">
-                                            <i class="bi bi-file-earmark me-2 text-muted"></i>
-                                            <div>
-                                                <div class="fw-medium">{{ file.filename }}</div>
-                                                <small class="text-muted">{{ file.file_size|filesizeformat }}</small>
+    <!-- Files Section -->
+    <div class="row">
+        <!-- My Files -->
+        <div class="col-lg-6 mb-4">
+            <div class="quantum-card h-100">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-folder2-open me-2 text-primary"></i>My Files
+                    </h5>
+                    <span class="badge bg-primary">{{ my_files_count }}</span>
+                </div>
+                <div class="card-body p-0">
+                    {% if my_files %}
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead style="background: rgba(248, 250, 252, 0.8);">
+                                    <tr>
+                                        <th class="border-0 fw-bold text-secondary">
+                                            <i class="bi bi-file-text me-1"></i>File
+                                        </th>
+                                        <th class="border-0 fw-bold text-secondary">
+                                            <i class="bi bi-people me-1"></i>Shared
+                                        </th>
+                                        <th class="border-0 fw-bold text-secondary">
+                                            <i class="bi bi-calendar me-1"></i>Uploaded
+                                        </th>
+                                        <th class="border-0 fw-bold text-secondary">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for file in my_files %}
+                                    <tr style="transition: all 0.2s ease;">
+                                        <td>
+                                            <div class="d-flex align-items-center">
+                                                <i class="bi bi-file-earmark me-2 text-primary"></i>
+                                                <div>
+                                                    <div class="fw-medium">{{ file.filename }}</div>
+                                                    <small class="text-muted">{{ file.file_size|filesizeformat }}</small>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <span class="badge bg-light text-dark">
-                                            {{ file.access_records.count }} user{{ file.access_records.count|pluralize }}
-                                        </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge" style="background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.2);">
+                                                {{ file.access_records.count }} user{{ file.access_records.count|pluralize }}
+                                            </span>
                                     </td>
                                     <td>
                                         <small class="text-muted">{{ file.created_at|date:"M d, Y" }}</small>
@@ -442,4 +443,5 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 </script>
+</div>
 {% endblock %}

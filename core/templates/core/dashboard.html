@@ -3,7 +3,7 @@
 {% block title %}Dashboard - Quantum-Safe File Storage{% endblock %}
 
 {% block content %}
-<div class="container py-4">
+<div class="container-fluid px-2 py-4">
     <!-- Dashboard Header -->
     <div class="row mb-4">
         <div class="col-12">
@@ -79,16 +79,32 @@
         <div class="col-lg-6 mb-4">
             <div class="quantum-card h-100">
                 <div class="card-header d-flex align-items-center justify-content-between">
-                    <h5 class="mb-0 fw-bold">
-                        <i class="bi bi-folder2-open me-2 text-primary"></i>My Files
-                    </h5>
-                    <span class="badge bg-primary">{{ my_files_count }}</span>
+                    <div class="d-flex align-items-center">
+                        <h5 class="mb-0 fw-bold me-3">
+                            <i class="bi bi-folder2-open me-2 text-primary"></i>My Files
+                        </h5>
+                        <span class="badge bg-primary">{{ my_files_count }}</span>
+                    </div>
+                    {% if my_files %}
+                    <!-- Small Search Box in Header -->
+                    <div style="width: 250px;">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-light border-end-0">
+                                <i class="bi bi-search text-muted"></i>
+                            </span>
+                            <input type="text" class="form-control border-start-0" 
+                                   id="myFilesSearch" 
+                                   placeholder="Search my files...">
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
                 <div class="card-body p-0">
                     {% if my_files %}
-                        <div class="table-responsive">
+                        <!-- Files Table with Scroll -->
+                        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                             <table class="table table-hover mb-0">
-                                <thead style="background: rgba(248, 250, 252, 0.8);">
+                                <thead style="background: rgba(248, 250, 252, 0.8); position: sticky; top: 0; z-index: 1;">
                                     <tr>
                                         <th class="border-0 fw-bold text-secondary">
                                             <i class="bi bi-file-text me-1"></i>File
@@ -102,7 +118,7 @@
                                         <th class="border-0 fw-bold text-secondary">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody id="myFilesTableBody">
                                     {% for file in my_files %}
                                     <tr style="transition: all 0.2s ease;">
                                         <td>
@@ -168,16 +184,32 @@
     <div class="col-lg-6 mb-4">
         <div class="quantum-card card h-100">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5 class="mb-0">
-                    <i class="bi bi-share me-2"></i>Shared With Me
-                </h5>
-                <span class="badge bg-success">{{ shared_files_count }}</span>
+                <div class="d-flex align-items-center">
+                    <h5 class="mb-0 me-3">
+                        <i class="bi bi-share me-2"></i>Shared With Me
+                    </h5>
+                    <span class="badge bg-success">{{ shared_files_count }}</span>
+                </div>
+                {% if shared_files %}
+                <!-- Small Search Box in Header -->
+                <div style="width: 250px;">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-light border-end-0">
+                            <i class="bi bi-search text-muted"></i>
+                        </span>
+                        <input type="text" class="form-control border-start-0" 
+                               id="sharedFilesSearch" 
+                               placeholder="Search shared files...">
+                    </div>
+                </div>
+                {% endif %}
             </div>
             <div class="card-body p-0">
                 {% if shared_files %}
-                    <div class="table-responsive">
+                    <!-- Files Table with Scroll -->
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                         <table class="table table-hover mb-0">
-                            <thead class="table-light">
+                            <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
                                 <tr>
                                     <th class="border-0">
                                         <i class="bi bi-file-text me-1"></i>File
@@ -191,7 +223,7 @@
                                     <th class="border-0">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="sharedFilesTableBody">
                                 {% for access in shared_files %}
                                 <tr>
                                     <td>
@@ -470,6 +502,159 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
+
+<script>
+// File data for JavaScript filtering
+const myFiles = [
+    {% for file in my_files %}
+    {
+        id: {{ file.id }},
+        filename: "{{ file.filename|escapejs }}",
+        size: {{ file.file_size }},
+        sharedCount: {{ file.access_records.count }},
+        uploadedDate: "{{ file.created_at|date:'M d, Y' }}",
+        uploadedDateTime: "{{ file.created_at|date:'M d, Y H:i' }}",
+        sharedEmails: "{% for access in file.access_records.all %}{{ access.user_email }}{% if not forloop.last %},{% endif %}{% endfor %}"
+    }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+];
+
+const sharedFiles = [
+    {% for access in shared_files %}
+    {
+        id: {{ access.file.id }},
+        filename: "{{ access.file.filename|escapejs }}",
+        size: {{ access.file.file_size }},
+        fromUser: "{{ access.file.uploaded_by.get_full_name|default:access.file.uploaded_by.username|escapejs }}",
+        sharedDate: "{{ access.created_at|date:'M d, Y' }}"
+    }{% if not forloop.last %},{% endif %}
+    {% endfor %}
+];
+
+// Initialize tables when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    renderMyFiles(myFiles);
+    renderSharedFiles(sharedFiles);
+    
+    // Search functionality for My Files
+    document.getElementById('myFilesSearch').addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase();
+        const filteredFiles = myFiles.filter(file => 
+            file.filename.toLowerCase().includes(searchTerm)
+        );
+        renderMyFiles(filteredFiles);
+    });
+    
+    // Search functionality for Shared Files
+    document.getElementById('sharedFilesSearch').addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase();
+        const filteredFiles = sharedFiles.filter(file => 
+            file.filename.toLowerCase().includes(searchTerm) ||
+            file.fromUser.toLowerCase().includes(searchTerm)
+        );
+        renderSharedFiles(filteredFiles);
+    });
+});
+
+function renderMyFiles(files) {
+    const tbody = document.getElementById('myFilesTableBody');
+    if (files.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="4" class="text-center py-4 text-muted">
+                    <i class="bi bi-search me-2"></i>No files found
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    // Limit to 8 files
+    const displayFiles = files.slice(0, 8);
+    tbody.innerHTML = displayFiles.map(file => `
+        <tr style="transition: all 0.2s ease;">
+            <td>
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-file-earmark me-2 text-primary"></i>
+                    <div>
+                        <div class="fw-medium">${file.filename}</div>
+                        <small class="text-muted">${formatFileSize(file.size)}</small>
+                    </div>
+                </div>
+            </td>
+            <td>
+                <span class="badge" style="background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.2);">
+                    ${file.sharedCount} user${file.sharedCount !== 1 ? 's' : ''}
+                </span>
+            </td>
+            <td>
+                <small class="text-muted">${file.uploadedDate}</small>
+            </td>
+            <td>
+                <div class="btn-group btn-group-sm" role="group">
+                    <a href="/download/${file.id}/" class="btn btn-outline-primary btn-sm">
+                        <i class="bi bi-download"></i>
+                    </a>
+                    <a href="/files/${file.id}/share/" class="btn btn-outline-success btn-sm">
+                        <i class="bi bi-share"></i>
+                    </a>
+                    <button class="btn btn-outline-info btn-sm file-details-btn" 
+                            onclick="viewFileDetails(${file.id}, '${file.filename}', '${file.uploadedDateTime}', ${file.size}, '${file.sharedEmails}'.split(','))">
+                        <i class="bi bi-info-circle"></i>
+                    </button>
+                    <button class="btn btn-outline-danger btn-sm delete-file-btn" 
+                            onclick="showDeleteConfirmation(${file.id}, '${file.filename}')">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderSharedFiles(files) {
+    const tbody = document.getElementById('sharedFilesTableBody');
+    if (files.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="4" class="text-center py-4 text-muted">
+                    <i class="bi bi-search me-2"></i>No files found
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    // Limit to 8 files
+    const displayFiles = files.slice(0, 8);
+    tbody.innerHTML = displayFiles.map(file => `
+        <tr>
+            <td>
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-file-earmark me-2 text-muted"></i>
+                    <div>
+                        <div class="fw-medium">${file.filename}</div>
+                        <small class="text-muted">${formatFileSize(file.size)}</small>
+                    </div>
+                </div>
+            </td>
+            <td>
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-person-circle me-1 text-muted"></i>
+                    <small>${file.fromUser}</small>
+                </div>
+            </td>
+            <td>
+                <small class="text-muted">${file.sharedDate}</small>
+            </td>
+            <td>
+                <a href="/download/${file.id}/" class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-download"></i>
+                </a>
+            </td>
+        </tr>
+    `).join('');
+}
 
 function viewFileDetails(fileId, filename, uploaded, size, sharedWith) {
     document.getElementById('detailFilename').textContent = filename;

@@ -15,6 +15,8 @@ urlpatterns = [
     
     # Dashboard and file management
     path('dashboard/', views.dashboard_view, name='dashboard'),
+    path('my-files/', views.my_files_view, name='my_files'),
+    path('shared-with-me/', views.shared_with_me_view, name='shared_with_me'),
     path('upload/', views.upload_file_view, name='upload'),
     path('download/<int:file_id>/', views.download_file_view, name='download_file'),
     path('files/<int:file_id>/share/', views.manage_file_sharing_view, name='manage_file_sharing'),

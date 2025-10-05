@@ -242,6 +242,160 @@ def dashboard_view(request):
 
 
 @login_required
+def my_files_view(request):
+    """
+    Dedicated page for My Files with advanced filtering and search.
+    """
+    from django.db.models import Q, Count
+    import mimetypes
+    
+    # Get all files uploaded by the user
+    files_query = EncryptedFile.objects.filter(uploaded_by=request.user).annotate(
+        share_count=Count('access_records')
+    ).order_by('-created_at')
+    
+    # Get filter parameters
+    search = request.GET.get('search', '')
+    file_type = request.GET.get('file_type', '')
+    date_filter = request.GET.get('date_filter', '')
+    shared_filter = request.GET.get('shared_filter', '')
+    
+    # Apply search filter
+    if search:
+        files_query = files_query.filter(
+            Q(filename__icontains=search) |
+            Q(description__icontains=search)
+        )
+    
+    # Apply file type filter
+    if file_type:
+        if file_type == 'image':
+            files_query = files_query.filter(filename__iregex=r'\.(jpg|jpeg|png|gif|bmp|svg)$')
+        elif file_type == 'document':
+            files_query = files_query.filter(filename__iregex=r'\.(pdf|doc|docx|txt|rtf|odt)$')
+        elif file_type == 'video':
+            files_query = files_query.filter(filename__iregex=r'\.(mp4|avi|mov|wmv|flv|mkv)$')
+        elif file_type == 'audio':
+            files_query = files_query.filter(filename__iregex=r'\.(mp3|wav|flac|ogg|aac)$')
+        elif file_type == 'archive':
+            files_query = files_query.filter(filename__iregex=r'\.(zip|rar|7z|tar|gz)$')
+    
+    # Apply date filter
+    if date_filter:
+        from datetime import datetime, timedelta
+        now = timezone.now()
+        if date_filter == 'today':
+            files_query = files_query.filter(created_at__date=now.date())
+        elif date_filter == 'week':
+            week_ago = now - timedelta(days=7)
+            files_query = files_query.filter(created_at__gte=week_ago)
+        elif date_filter == 'month':
+            month_ago = now - timedelta(days=30)
+            files_query = files_query.filter(created_at__gte=month_ago)
+    
+    # Apply shared filter
+    if shared_filter:
+        if shared_filter == 'shared':
+            files_query = files_query.filter(share_count__gt=0)
+        elif shared_filter == 'not_shared':
+            files_query = files_query.filter(share_count=0)
+    
+    # Get statistics
+    total_files = EncryptedFile.objects.filter(uploaded_by=request.user).count()
+    total_size = sum([f.file_size for f in EncryptedFile.objects.filter(uploaded_by=request.user)])
+    shared_files_count = EncryptedFile.objects.filter(uploaded_by=request.user, access_records__isnull=False).distinct().count()
+    
+    context = {
+        'files': files_query,
+        'search': search,
+        'file_type': file_type,
+        'date_filter': date_filter,
+        'shared_filter': shared_filter,
+        'total_files': total_files,
+        'total_size': total_size,
+        'shared_files_count': shared_files_count,
+    }
+    
+    return render(request, 'core/my_files.html', context)
+
+
+@login_required
+def shared_with_me_view(request):
+    """
+    Dedicated page for Shared With Me files with advanced filtering and search.
+    """
+    from django.db.models import Q
+    
+    # Get all files shared with the user
+    files_query = FileAccess.objects.filter(
+        user_email=request.user.email
+    ).select_related('file', 'file__uploaded_by').order_by('-created_at')
+    
+    # Get filter parameters
+    search = request.GET.get('search', '')
+    file_type = request.GET.get('file_type', '')
+    date_filter = request.GET.get('date_filter', '')
+    sender_filter = request.GET.get('sender', '')
+    
+    # Apply search filter
+    if search:
+        files_query = files_query.filter(
+            Q(file__filename__icontains=search) |
+            Q(file__description__icontains=search) |
+            Q(file__uploaded_by__username__icontains=search) |
+            Q(file__uploaded_by__email__icontains=search)
+        )
+    
+    # Apply file type filter
+    if file_type:
+        if file_type == 'image':
+            files_query = files_query.filter(file__filename__iregex=r'\.(jpg|jpeg|png|gif|bmp|svg)$')
+        elif file_type == 'document':
+            files_query = files_query.filter(file__filename__iregex=r'\.(pdf|doc|docx|txt|rtf|odt)$')
+        elif file_type == 'video':
+            files_query = files_query.filter(file__filename__iregex=r'\.(mp4|avi|mov|wmv|flv|mkv)$')
+        elif file_type == 'audio':
+            files_query = files_query.filter(file__filename__iregex=r'\.(mp3|wav|flac|ogg|aac)$')
+        elif file_type == 'archive':
+            files_query = files_query.filter(file__filename__iregex=r'\.(zip|rar|7z|tar|gz)$')
+    
+    # Apply date filter
+    if date_filter:
+        from datetime import datetime, timedelta
+        now = timezone.now()
+        if date_filter == 'today':
+            files_query = files_query.filter(created_at__date=now.date())
+        elif date_filter == 'week':
+            week_ago = now - timedelta(days=7)
+            files_query = files_query.filter(created_at__gte=week_ago)
+        elif date_filter == 'month':
+            month_ago = now - timedelta(days=30)
+            files_query = files_query.filter(created_at__gte=month_ago)
+    
+    # Apply sender filter
+    if sender_filter:
+        files_query = files_query.filter(file__uploaded_by__email=sender_filter)
+    
+    # Get statistics and unique senders
+    total_shared = FileAccess.objects.filter(user_email=request.user.email).count()
+    unique_senders = FileAccess.objects.filter(user_email=request.user.email).values_list(
+        'file__uploaded_by__email', 'file__uploaded_by__username'
+    ).distinct()
+    
+    context = {
+        'file_accesses': files_query,
+        'search': search,
+        'file_type': file_type,
+        'date_filter': date_filter,
+        'sender_filter': sender_filter,
+        'total_shared': total_shared,
+        'unique_senders': unique_senders,
+    }
+    
+    return render(request, 'core/shared_with_me.html', context)
+
+
+@login_required
 def upload_file_view(request):
     """
     Multiple file upload with AES encryption and Kyber key wrapping.

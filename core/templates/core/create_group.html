@@ -1,0 +1,151 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Create Group{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <!-- Create Group Header -->
+            <div class="quantum-card mb-4">
+                <div class="card-header">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <h4 class="mb-2 fw-bold">
+                                <i class="bi bi-plus-circle me-2 text-primary"></i>Create New Group
+                            </h4>
+                            <p class="text-muted mb-0 fw-medium">Create a group to easily share files with the same people</p>
+                        </div>
+                        <div class="text-end">
+                            <a href="{% url 'manage_groups' %}" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-left me-1"></i>Back to Groups
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Create Group Form -->
+            <div class="quantum-card">
+                <div class="card-header">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-info-circle me-2 text-primary"></i>Group Details
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="post" id="createGroupForm">
+                        {% csrf_token %}
+                        
+                        <!-- Group Name -->
+                        <div class="mb-4">
+                            <label for="{{ form.name.id_for_label }}" class="form-label">
+                                <i class="bi bi-tag me-2"></i>Group Name *
+                            </label>
+                            {{ form.name }}
+                            {% if form.name.help_text %}
+                                <div class="form-text">{{ form.name.help_text }}</div>
+                            {% endif %}
+                            {% if form.name.errors %}
+                                {% for error in form.name.errors %}
+                                    <div class="text-danger small">{{ error }}</div>
+                                {% endfor %}
+                            {% endif %}
+                        </div>
+
+                        <!-- Group Description -->
+                        <div class="mb-4">
+                            <label for="{{ form.description.id_for_label }}" class="form-label">
+                                <i class="bi bi-text-paragraph me-2"></i>Description
+                            </label>
+                            {{ form.description }}
+                            {% if form.description.help_text %}
+                                <div class="form-text">{{ form.description.help_text }}</div>
+                            {% endif %}
+                            {% if form.description.errors %}
+                                {% for error in form.description.errors %}
+                                    <div class="text-danger small">{{ error }}</div>
+                                {% endfor %}
+                            {% endif %}
+                        </div>
+
+                        <!-- Member Selection -->
+                        <div class="mb-4">
+                            <label class="form-label">
+                                <i class="bi bi-people me-2"></i>Select Members
+                            </label>
+                            
+                            <!-- Search Box for Members -->
+                            <div class="mb-3">
+                                <input type="text" class="form-control" id="memberSearch" placeholder="Search users...">
+                            </div>
+                            
+                            <!-- Member List -->
+                            <div class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
+                                <div id="memberList">
+                                    {% for user in member_form.selected_users.field.queryset %}
+                                        <div class="form-check mb-2 user-option" data-search="{{ user.email|lower }} {{ user.get_full_name|default:user.username|lower }}">
+                                            <input class="form-check-input" type="checkbox" name="selected_users" value="{{ user.id }}" id="user_{{ user.id }}">
+                                            <label class="form-check-label d-flex align-items-center" for="user_{{ user.id }}">
+                                                <i class="bi bi-person-circle me-2 text-muted"></i>
+                                                <div>
+                                                    <div class="fw-medium">{{ user.get_full_name|default:user.username }}</div>
+                                                    <div class="text-muted small">{{ user.email }}</div>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    {% empty %}
+                                        <div class="text-muted text-center py-3">
+                                            <i class="bi bi-people me-2"></i>No other users available
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            
+                            <div class="form-text">
+                                Select users to add to this group. You can search by name or email above.
+                            </div>
+                            
+                            {% if member_form.selected_users.errors %}
+                                {% for error in member_form.selected_users.errors %}
+                                    <div class="text-danger small">{{ error }}</div>
+                                {% endfor %}
+                            {% endif %}
+                        </div>
+
+                        <!-- Submit Button -->
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{% url 'manage_groups' %}" class="btn btn-outline-secondary">
+                                <i class="bi bi-x-circle me-1"></i>Cancel
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle me-1"></i>Create Group
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const memberSearch = document.getElementById('memberSearch');
+    const userOptions = document.querySelectorAll('.user-option');
+    
+    // Member search functionality
+    memberSearch.addEventListener('input', function() {
+        const searchTerm = this.value.toLowerCase();
+        
+        userOptions.forEach(option => {
+            const searchData = option.dataset.search;
+            if (searchData.includes(searchTerm)) {
+                option.style.display = 'block';
+            } else {
+                option.style.display = 'none';
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

@@ -5,7 +5,7 @@ Django forms for quantum-safe file storage system.
 from django import forms
 from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
 from django.core.exceptions import ValidationError
-from .models import QuantumUser, EncryptedFile
+from .models import QuantumUser, EncryptedFile, UserGroup
 import logging
 
 logger = logging.getLogger(__name__)
@@ -250,3 +250,56 @@ class UserSearchForm(forms.Form):
         if len(query) < 2:
             raise ValidationError("Search query must be at least 2 characters long.")
         return query
+
+
+class UserGroupForm(forms.ModelForm):
+    """
+    Form for creating and editing user groups.
+    """
+    class Meta:
+        model = UserGroup
+        fields = ['name', 'description']
+        widgets = {
+            'name': forms.TextInput(attrs={
+                'class': 'form-control',
+                'placeholder': 'Enter group name (e.g., "Project Team", "Family")',
+                'maxlength': 100
+            }),
+            'description': forms.Textarea(attrs={
+                'class': 'form-control',
+                'placeholder': 'Optional description of the group...',
+                'rows': 3
+            })
+        }
+
+    def clean_name(self):
+        name = self.cleaned_data.get('name', '').strip()
+        if len(name) < 2:
+            raise ValidationError("Group name must be at least 2 characters long.")
+        if len(name) > 100:
+            raise ValidationError("Group name cannot exceed 100 characters.")
+        return name
+
+
+class GroupMemberSelectionForm(forms.Form):
+    """
+    Form for selecting users to add to a group.
+    """
+    selected_users = forms.ModelMultipleChoiceField(
+        queryset=None,  # Will be set in __init__
+        widget=forms.CheckboxSelectMultiple(attrs={
+            'class': 'form-check-input'
+        }),
+        required=False,
+        label="Select users to add to group"
+    )
+
+    def __init__(self, current_user=None, existing_members=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Get all users except current user and existing members
+        queryset = QuantumUser.objects.exclude(id=current_user.id if current_user else None)
+        if existing_members:
+            queryset = queryset.exclude(id__in=[member.id for member in existing_members])
+        
+        self.fields['selected_users'].queryset = queryset.order_by('username')

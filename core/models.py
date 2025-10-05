@@ -205,3 +205,54 @@ class AuditLog(models.Model):
         else:
             ip = request.META.get('REMOTE_ADDR')
         return ip
+
+
+class UserGroup(models.Model):
+    """
+    Model for user-created groups to simplify file sharing.
+    Users can create groups of people they frequently share files with.
+    """
+    name = models.CharField(max_length=100, help_text="Group name")
+    description = models.TextField(blank=True, help_text="Optional group description")
+    created_by = models.ForeignKey(QuantumUser, on_delete=models.CASCADE, related_name='created_groups')
+    members = models.ManyToManyField(
+        QuantumUser, 
+        through='GroupMembership', 
+        through_fields=('group', 'user'),
+        related_name='member_of_groups'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'user_groups'
+        unique_together = ['name', 'created_by']  # Each user can have unique group names
+
+    def __str__(self):
+        return f"{self.name} (by {self.created_by.username})"
+
+    def get_member_emails(self):
+        """Get list of member email addresses"""
+        return list(self.members.values_list('email', flat=True))
+
+    def get_member_count(self):
+        """Get number of members in the group"""
+        return self.members.count()
+
+
+class GroupMembership(models.Model):
+    """
+    Through model for UserGroup many-to-many relationship with QuantumUser.
+    Tracks when users were added to groups.
+    """
+    group = models.ForeignKey(UserGroup, on_delete=models.CASCADE)
+    user = models.ForeignKey(QuantumUser, on_delete=models.CASCADE)
+    added_at = models.DateTimeField(auto_now_add=True)
+    added_by = models.ForeignKey(QuantumUser, on_delete=models.CASCADE, related_name='group_additions')
+
+    class Meta:
+        db_table = 'group_memberships'
+        unique_together = ['group', 'user']  # Each user can only be in a group once
+
+    def __str__(self):
+        return f"{self.user.username} in {self.group.name}"

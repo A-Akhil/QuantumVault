@@ -1,0 +1,111 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Manage Groups{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-12">
+            <!-- Groups Header -->
+            <div class="quantum-card mb-4">
+                <div class="card-header">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <h4 class="mb-2 fw-bold">
+                                <i class="bi bi-people me-2 text-primary"></i>My Groups
+                            </h4>
+                            <p class="text-muted mb-0 fw-medium">Create and manage groups for easier file sharing</p>
+                        </div>
+                        <div class="text-end">
+                            <a href="{% url 'create_group' %}" class="btn btn-primary">
+                                <i class="bi bi-plus-circle me-1"></i>Create Group
+                            </a>
+                            <a href="{% url 'upload' %}" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-left me-1"></i>Back to Upload
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Groups List -->
+            {% if user_groups %}
+                <div class="row">
+                    {% for group in user_groups %}
+                        <div class="col-md-6 col-lg-4 mb-4">
+                            <div class="quantum-card h-100">
+                                <div class="card-header">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <h6 class="mb-0 fw-bold">
+                                            <i class="bi bi-people-fill me-2 text-primary"></i>{{ group.name }}
+                                        </h6>
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown">
+                                                <i class="bi bi-three-dots-vertical"></i>
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                <li>
+                                                    <form method="post" action="{% url 'delete_group' group.id %}" class="d-inline" 
+                                                          onsubmit="return confirm('Are you sure you want to delete this group?')">
+                                                        {% csrf_token %}
+                                                        <button type="submit" class="dropdown-item text-danger">
+                                                            <i class="bi bi-trash me-2"></i>Delete Group
+                                                        </button>
+                                                    </form>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    {% if group.description %}
+                                        <p class="text-muted small mb-3">{{ group.description }}</p>
+                                    {% endif %}
+                                    
+                                    <div class="mb-3">
+                                        <span class="badge bg-primary-subtle text-primary">
+                                            {{ group.get_member_count }} member{{ group.get_member_count|pluralize }}
+                                        </span>
+                                    </div>
+                                    
+                                    <!-- Group Members -->
+                                    <div class="mb-3">
+                                        <h6 class="small text-secondary mb-2">Members:</h6>
+                                        {% for member in group.members.all %}
+                                            <div class="d-flex align-items-center mb-2">
+                                                <i class="bi bi-person-circle me-2 text-muted"></i>
+                                                <div class="small">
+                                                    <div class="fw-medium">{{ member.get_full_name|default:member.username }}</div>
+                                                    <div class="text-muted">{{ member.email }}</div>
+                                                </div>
+                                            </div>
+                                        {% empty %}
+                                            <div class="text-muted small">No members yet</div>
+                                        {% endfor %}
+                                    </div>
+                                    
+                                    <div class="small text-muted">
+                                        <i class="bi bi-calendar me-1"></i>Created {{ group.created_at|date:"M d, Y" }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <!-- No Groups -->
+                <div class="quantum-card text-center py-5">
+                    <div class="mb-4">
+                        <i class="bi bi-people display-1 text-muted"></i>
+                    </div>
+                    <h5 class="mb-3">No Groups Yet</h5>
+                    <p class="text-muted mb-4">Create groups to organize users you frequently share files with.</p>
+                    <a href="{% url 'create_group' %}" class="btn btn-primary">
+                        <i class="bi bi-plus-circle me-1"></i>Create Your First Group
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

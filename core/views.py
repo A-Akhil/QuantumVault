@@ -17,7 +17,7 @@ import mimetypes
 import base64
 from typing import Optional
 
-from .models import QuantumUser, EncryptedFile, FileAccess, AuditLog
+from .models import QuantumUser, EncryptedFile, FileAccess, AuditLog, UserGroup
 from .forms import QuantumUserRegistrationForm, QuantumUserLoginForm, FileUploadForm, FileShareForm
 from .crypto_utils import (
     generate_kyber768_keypair,
@@ -222,6 +222,10 @@ def dashboard_view(request):
         timestamp__gte=week_ago
     ).count()
     
+    # Get user groups
+    user_groups = UserGroup.objects.filter(created_by=request.user).order_by('name')[:5]  # Show first 5 groups
+    groups_count = UserGroup.objects.filter(created_by=request.user).count()
+    
     context = {
         'my_files': my_files,
         'shared_files': shared_files,
@@ -230,6 +234,8 @@ def dashboard_view(request):
         'shared_files_count': shared_files_count,
         'total_shares': total_shares,
         'recent_activities': recent_activities,
+        'user_groups': user_groups,
+        'groups_count': groups_count,
     }
     
     return render(request, 'core/dashboard.html', context)
@@ -392,11 +398,13 @@ def upload_file_view(request):
     
     # GET request - show upload form
     available_users = QuantumUser.objects.exclude(email=request.user.email).order_by('email')
+    user_groups = UserGroup.objects.filter(created_by=request.user).order_by('name')
     form = FileUploadForm()
     
     return render(request, 'core/upload.html', {
         'form': form,
-        'available_users': available_users
+        'available_users': available_users,
+        'user_groups': user_groups
     })
 
 
@@ -835,6 +843,89 @@ def delete_file_view(request, file_id):
         messages.error(request, 'Failed to delete file. Please try again.')
     
     return redirect('dashboard')
+
+
+@login_required
+def manage_groups_view(request):
+    """
+    View and manage user groups for easier file sharing.
+    """
+    user_groups = UserGroup.objects.filter(created_by=request.user).order_by('name')
+    
+    context = {
+        'user_groups': user_groups,
+    }
+    
+    return render(request, 'core/manage_groups.html', context)
+
+
+@login_required
+def create_group_view(request):
+    """
+    Create a new user group.
+    """
+    if request.method == 'POST':
+        from .forms import UserGroupForm, GroupMemberSelectionForm
+        
+        form = UserGroupForm(request.POST)
+        member_form = GroupMemberSelectionForm(current_user=request.user, data=request.POST)
+        
+        if form.is_valid() and member_form.is_valid():
+            try:
+                # Create the group
+                group = form.save(commit=False)
+                group.created_by = request.user
+                group.save()
+                
+                # Add selected members
+                selected_users = member_form.cleaned_data['selected_users']
+                for user in selected_users:
+                    from .models import GroupMembership
+                    GroupMembership.objects.create(
+                        group=group,
+                        user=user,
+                        added_by=request.user
+                    )
+                
+                messages.success(request, f'Group "{group.name}" created successfully with {selected_users.count()} members!')
+                return redirect('manage_groups')
+                
+            except Exception as e:
+                logger.error(f"Failed to create group for user {request.user.email}: {e}")
+                messages.error(request, 'Failed to create group. Please try again.')
+        else:
+            messages.error(request, 'Please correct the errors in the form.')
+    else:
+        from .forms import UserGroupForm, GroupMemberSelectionForm
+        form = UserGroupForm()
+        member_form = GroupMemberSelectionForm(current_user=request.user)
+    
+    context = {
+        'form': form,
+        'member_form': member_form,
+    }
+    
+    return render(request, 'core/create_group.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def delete_group_view(request, group_id):
+    """
+    Delete a user group.
+    """
+    try:
+        group = get_object_or_404(UserGroup, id=group_id, created_by=request.user)
+        group_name = group.name
+        group.delete()
+        
+        messages.success(request, f'Group "{group_name}" deleted successfully!')
+        
+    except Exception as e:
+        logger.error(f"Failed to delete group {group_id} for user {request.user.email}: {e}")
+        messages.error(request, 'Failed to delete group. Please try again.')
+    
+    return redirect('manage_groups')
 
 
 def home_view(request):

@@ -15,7 +15,7 @@ urlpatterns = [
     
     # Dashboard and file management
     path('dashboard/', views.dashboard_view, name='dashboard'),
-    path('upload/', views.upload_file_view, name='upload_file'),
+    path('upload/', views.upload_file_view, name='upload'),
     path('download/<int:file_id>/', views.download_file_view, name='download_file'),
     path('files/<int:file_id>/share/', views.manage_file_sharing_view, name='manage_file_sharing'),
     path('files/<int:file_id>/access/add/', views.add_file_access_view, name='add_file_access'),
@@ -24,6 +24,11 @@ urlpatterns = [
     
     # Audit and monitoring
     path('audit/', views.audit_logs_view, name='audit_logs'),
+    
+    # Group management
+    path('groups/', views.manage_groups_view, name='manage_groups'),
+    path('groups/create/', views.create_group_view, name='create_group'),
+    path('groups/<int:group_id>/delete/', views.delete_group_view, name='delete_group'),
     
     # API endpoints for backend testing
     path('api/status/', api_views.api_status, name='api_status'),

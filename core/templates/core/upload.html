@@ -118,11 +118,34 @@
                                 <div class="form-text text-muted">Start typing to filter users by email or name</div>
                             </div>
                             
-                            <!-- User Selection -->
+                            <!-- Groups and User Selection -->
                             <div class="mb-3">
-                                <label for="user_select" class="form-label">
+                                <label class="form-label">
                                     <i class="bi bi-person-check me-2"></i>Select Recipients
                                 </label>
+                                
+                                <!-- Groups Section -->
+                                {% if user_groups %}
+                                <div class="mb-3">
+                                    <label for="group_select" class="form-label small text-secondary">
+                                        <i class="bi bi-people me-1"></i>Quick Select from Groups:
+                                    </label>
+                                    <select class="form-select form-select-sm" id="group_select">
+                                        <option value="">Choose a group...</option>
+                                        {% for group in user_groups %}
+                                            <option value="{{ group.id }}" data-members="{{ group.get_member_emails|join:',' }}">
+                                                {{ group.name }} ({{ group.get_member_count }} member{{ group.get_member_count|pluralize }})
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="form-text text-muted small">
+                                        Select a group to quickly add all its members as recipients.
+                                        <a href="{% url 'manage_groups' %}" class="text-decoration-none">Manage Groups</a>
+                                    </div>
+                                </div>
+                                {% endif %}
+                                
+                                <!-- Individual User Selection -->
                                 <select class="form-select" id="user_select" name="recipients" multiple size="8">
                                     <option value="" disabled class="text-muted">Choose users to share with...</option>
                                     {% for user in available_users %}
@@ -324,9 +347,30 @@ document.addEventListener('DOMContentLoaded', function() {
     const filesList = document.getElementById('filesList');
     const fileCount = document.getElementById('fileCount');
     const totalSize = document.getElementById('totalSize');
+    const groupSelect = document.getElementById('group_select');
 
     // Store all user options for filtering
     const allOptions = Array.from(userSelect.options).filter(option => option.value !== '');
+    
+    // Handle group selection
+    if (groupSelect) {
+        groupSelect.addEventListener('change', function() {
+            if (this.value) {
+                const selectedOption = this.options[this.selectedIndex];
+                const memberEmails = selectedOption.dataset.members.split(',').filter(email => email.trim());
+                
+                // Select all group members in the user select
+                Array.from(userSelect.options).forEach(option => {
+                    if (memberEmails.includes(option.value)) {
+                        option.selected = true;
+                    }
+                });
+                
+                updateSelectedUsersList();
+                this.value = ''; // Reset group selection
+            }
+        });
+    }
     
     // Handle file selection
     fileInput.addEventListener('change', function() {

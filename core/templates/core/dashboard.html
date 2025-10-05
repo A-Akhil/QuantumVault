@@ -16,7 +16,7 @@
                         <p class="text-muted mb-0 fw-medium">Welcome back, {{ user.get_full_name|default:user.username }}!</p>
                     </div>
                     <div class="text-end">
-                        <a href="{% url 'upload_file' %}" class="btn btn-primary quantum-btn">
+                        <a href="{% url 'upload' %}" class="btn btn-primary quantum-btn">
                             <i class="bi bi-cloud-upload me-2"></i>Upload File
                         </a>
                     </div>
@@ -55,8 +55,8 @@
                     <div class="mb-3">
                         <i class="bi bi-people text-warning" style="font-size: 2.5rem;"></i>
                     </div>
-                    <h5 class="fw-bold mb-2">{{ total_shares }}</h5>
-                    <p class="small text-muted mb-0">Total Shares</p>
+                    <h5 class="fw-bold mb-2">{{ groups_count }}</h5>
+                    <p class="small text-muted mb-0">My Groups</p>
                 </div>
             </div>
         </div>
@@ -155,7 +155,7 @@
                         <i class="bi bi-folder2 text-muted" style="font-size: 3rem;"></i>
                         <h6 class="mt-3 text-muted">No files uploaded yet</h6>
                         <p class="text-muted small">Upload your first file to get started!</p>
-                        <a href="{% url 'upload_file' %}" class="btn btn-primary btn-sm">
+                        <a href="{% url 'upload' %}" class="btn btn-primary btn-sm">
                             <i class="bi bi-cloud-upload me-1"></i>Upload File
                         </a>
                     </div>
@@ -297,6 +297,71 @@
                         <p class="text-muted small mb-0">Your recent file activities will appear here</p>
                     </div>
                 {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Quick Groups Section -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="quantum-card">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-people me-2 text-primary"></i>My Groups
+                    </h5>
+                    <div>
+                        <a href="{% url 'create_group' %}" class="btn btn-outline-primary btn-sm me-2">
+                            <i class="bi bi-plus-circle me-1"></i>Create Group
+                        </a>
+                        <a href="{% url 'manage_groups' %}" class="btn btn-primary btn-sm">
+                            <i class="bi bi-gear me-1"></i>Manage Groups
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if user_groups %}
+                        <div class="row">
+                            {% for group in user_groups %}
+                                <div class="col-md-6 col-lg-4 mb-3">
+                                    <div class="card border" style="background: rgba(255, 255, 255, 0.5); border: 1px solid var(--border-color) !important;">
+                                        <div class="card-body p-3">
+                                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                                <h6 class="mb-0 fw-bold">
+                                                    <i class="bi bi-people-fill me-2 text-primary"></i>{{ group.name }}
+                                                </h6>
+                                                <span class="badge bg-primary-subtle text-primary">
+                                                    {{ group.get_member_count }} member{{ group.get_member_count|pluralize }}
+                                                </span>
+                                            </div>
+                                            {% if group.description %}
+                                                <p class="text-muted small mb-2">{{ group.description|truncatechars:50 }}</p>
+                                            {% endif %}
+                                            <div class="small text-muted">
+                                                <i class="bi bi-calendar me-1"></i>{{ group.created_at|date:"M d, Y" }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        {% if groups_count > 5 %}
+                            <div class="text-center mt-3">
+                                <a href="{% url 'manage_groups' %}" class="text-decoration-none">
+                                    <small class="text-muted">View all {{ groups_count }} groups →</small>
+                                </a>
+                            </div>
+                        {% endif %}
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="bi bi-people text-muted" style="font-size: 3rem;"></i>
+                            <h6 class="mt-3 text-muted">No groups created yet</h6>
+                            <p class="text-muted small">Create groups to organize users you frequently share files with.</p>
+                            <a href="{% url 'create_group' %}" class="btn btn-primary btn-sm">
+                                <i class="bi bi-plus-circle me-1"></i>Create Your First Group
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>

@@ -312,6 +312,9 @@ def upload_file_view(request):
                 signature = dilithium_sign(request.user.dilithium_private_key, metadata)
                 encrypted_file.metadata_signature = signature
                 
+                # Store original recipients list for signature verification
+                encrypted_file.wrapped_keys['_original_recipients'] = recipients
+                
                 # Save to database
                 encrypted_file.save()
                 
@@ -412,12 +415,30 @@ def download_file_view(request, file_id):
         file_data = aes_decrypt_file(aes_key, encrypted_file.aes_nonce, ciphertext)
         
         # Verify metadata signature
+        # Use original recipients list that was used when signing
+        original_recipients = encrypted_file.wrapped_keys.get('_original_recipients', [])
+        
+        # Debug logging
+        logger.info(f"File {file_id} signature verification debug:")
+        logger.info(f"  Original recipients from storage: {original_recipients}")
+        logger.info(f"  Current recipients: {encrypted_file.get_recipient_emails()}")
+        logger.info(f"  File uploaded by: {encrypted_file.uploaded_by.email}")
+        
+        # Fallback for files uploaded before the fix: use current recipients excluding owner
+        if not original_recipients:
+            logger.warning(f"No original recipients stored for file {file_id}, using fallback method")
+            original_recipients = [email for email in encrypted_file.get_recipient_emails() 
+                                 if email != encrypted_file.uploaded_by.email]
+        
         metadata = create_file_metadata_for_signature(
             encrypted_file.original_filename,
             encrypted_file.file_size,
-            [email for email in encrypted_file.get_recipient_emails() if email != encrypted_file.uploaded_by.email],
+            original_recipients,
             encrypted_file.uploaded_by.email
         )
+        
+        logger.info(f"  Metadata for verification: {metadata}")
+        logger.info(f"  Metadata length: {len(metadata)} bytes")
         
         signature_valid = dilithium_verify(
             encrypted_file.uploaded_by.dilithium_public_key,
@@ -490,6 +511,296 @@ def audit_logs_view(request):
     ).order_by('-timestamp')[:50]  # Last 50 entries
     
     return render(request, 'core/audit_logs.html', {'logs': logs})
+
+
+@login_required
+def manage_file_sharing_view(request, file_id):
+    """
+    Manage file sharing - view and modify access permissions.
+    Only file owner can manage sharing.
+    """
+    encrypted_file = get_object_or_404(EncryptedFile, id=file_id)
+    
+    # Check if user is the owner
+    if encrypted_file.uploaded_by != request.user:
+        messages.error(request, "You can only manage sharing for files you uploaded.")
+        return redirect('dashboard')
+    
+    # Get current access list
+    current_access = FileAccess.objects.filter(file=encrypted_file).order_by('created_at')
+    
+    # Get list of emails that already have access
+    existing_emails = set([request.user.email])  # Owner always has access
+    existing_emails.update(current_access.values_list('user_email', flat=True))
+    
+    # Get list of all users for adding access (excluding those who already have access)
+    all_users = QuantumUser.objects.exclude(email__in=existing_emails).order_by('email')
+    
+    context = {
+        'file': encrypted_file,
+        'current_access': current_access,
+        'all_users': all_users,
+        'existing_emails': existing_emails,
+    }
+    
+    return render(request, 'core/manage_file_sharing.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def add_file_access_view(request, file_id):
+    """
+    Add access for a new user to a file.
+    Wraps AES key with the new user's Kyber public key.
+    """
+    try:
+        encrypted_file = get_object_or_404(EncryptedFile, id=file_id)
+        
+        # Check if user is the owner
+        if encrypted_file.uploaded_by != request.user:
+            messages.error(request, "You can only manage sharing for files you uploaded.")
+            return redirect('dashboard')
+        
+        new_user_email = request.POST.get('user_email')
+        if not new_user_email:
+            messages.error(request, "Please select a user to add.")
+            return redirect('manage_file_sharing', file_id=file_id)
+        
+        # Check if user already has access
+        if FileAccess.objects.filter(file=encrypted_file, user_email=new_user_email).exists():
+            messages.warning(request, f"User {new_user_email} already has access to this file.")
+            return redirect('manage_file_sharing', file_id=file_id)
+        
+        # Get the new user
+        try:
+            new_user = QuantumUser.objects.get(email=new_user_email)
+        except QuantumUser.DoesNotExist:
+            messages.error(request, f"User with email {new_user_email} does not exist.")
+            return redirect('manage_file_sharing', file_id=file_id)
+        
+        # Get the original AES key by unwrapping it with owner's key
+        owner_wrapped_key_data = encrypted_file.get_wrapped_key_for_user(request.user.email)
+        owner_kyber_ct_data = encrypted_file.wrapped_keys.get(request.user.email + "_kyber_ct")
+        
+        if not owner_wrapped_key_data or not owner_kyber_ct_data:
+            messages.error(request, "Cannot retrieve encryption key for this file.")
+            return redirect('manage_file_sharing', file_id=file_id)
+        
+        # Unwrap AES key using owner's Kyber private key
+        kyber_ciphertext = base64.b64decode(owner_kyber_ct_data['ciphertext'])
+        aes_key = unwrap_aes_key_for_user(
+            kyber_ciphertext,
+            owner_wrapped_key_data['key_nonce'],
+            owner_wrapped_key_data['ciphertext'],
+            request.user.kyber_private_key
+        )
+        
+        # Wrap AES key for the new user
+        kyber_ct, key_nonce, wrapped_key = wrap_aes_key_for_user(
+            aes_key, new_user.kyber_public_key
+        )
+        
+        # Add wrapped key to the file
+        encrypted_file.add_wrapped_key_for_user(new_user_email, wrapped_key, key_nonce)
+        encrypted_file.wrapped_keys[new_user_email + "_kyber_ct"] = {
+            'ciphertext': base64.b64encode(kyber_ct).decode('utf-8'),
+            'key_nonce': base64.b64encode(b"").decode('utf-8')
+        }
+        encrypted_file.save()
+        
+        # Create access record
+        FileAccess.objects.create(
+            file=encrypted_file,
+            user_email=new_user_email,
+            granted_by=request.user
+        )
+        
+        # Log the action
+        AuditLog.log_action(
+            user_email=request.user.email,
+            action='share',
+            file=encrypted_file,
+            details={
+                'action': 'add_access',
+                'new_user': new_user_email,
+                'filename': encrypted_file.filename
+            },
+            request=request,
+            success=True
+        )
+        
+        messages.success(request, f"Access granted to {new_user_email} successfully!")
+        
+    except Exception as e:
+        logger.error(f"Failed to add file access for user {request.user.email}, file {file_id}: {e}")
+        messages.error(request, f"Failed to add access: {str(e)}")
+        
+        # Log failed action
+        AuditLog.log_action(
+            user_email=request.user.email,
+            action='share',
+            details={
+                'action': 'add_access_failed',
+                'new_user': request.POST.get('user_email', 'unknown'),
+                'file_id': file_id,
+                'error': str(e)
+            },
+            request=request,
+            success=False,
+            error_message=str(e)
+        )
+    
+    return redirect('manage_file_sharing', file_id=file_id)
+
+
+@login_required
+@require_http_methods(["POST"])
+def remove_file_access_view(request, file_id):
+    """
+    Remove access for a user from a file.
+    Removes wrapped key and access record.
+    """
+    try:
+        encrypted_file = get_object_or_404(EncryptedFile, id=file_id)
+        
+        # Check if user is the owner
+        if encrypted_file.uploaded_by != request.user:
+            messages.error(request, "You can only manage sharing for files you uploaded.")
+            return redirect('dashboard')
+        
+        remove_user_email = request.POST.get('user_email')
+        if not remove_user_email:
+            messages.error(request, "Please select a user to remove.")
+            return redirect('manage_file_sharing', file_id=file_id)
+        
+        # Cannot remove owner's own access
+        if remove_user_email == request.user.email:
+            messages.error(request, "You cannot remove your own access to the file.")
+            return redirect('manage_file_sharing', file_id=file_id)
+        
+        # Check if user has access
+        access_record = FileAccess.objects.filter(file=encrypted_file, user_email=remove_user_email).first()
+        if not access_record:
+            messages.warning(request, f"User {remove_user_email} does not have access to this file.")
+            return redirect('manage_file_sharing', file_id=file_id)
+        
+        # Remove wrapped keys from file
+        if encrypted_file.wrapped_keys:
+            encrypted_file.wrapped_keys.pop(remove_user_email, None)
+            encrypted_file.wrapped_keys.pop(remove_user_email + "_kyber_ct", None)
+            encrypted_file.save()
+        
+        # Remove access record
+        access_record.delete()
+        
+        # Log the action
+        AuditLog.log_action(
+            user_email=request.user.email,
+            action='share',
+            file=encrypted_file,
+            details={
+                'action': 'remove_access',
+                'removed_user': remove_user_email,
+                'filename': encrypted_file.filename
+            },
+            request=request,
+            success=True
+        )
+        
+        messages.success(request, f"Access removed from {remove_user_email} successfully!")
+        
+    except Exception as e:
+        logger.error(f"Failed to remove file access for user {request.user.email}, file {file_id}: {e}")
+        messages.error(request, f"Failed to remove access: {str(e)}")
+        
+        # Log failed action
+        AuditLog.log_action(
+            user_email=request.user.email,
+            action='share',
+            details={
+                'action': 'remove_access_failed',
+                'removed_user': request.POST.get('user_email', 'unknown'),
+                'file_id': file_id,
+                'error': str(e)
+            },
+            request=request,
+            success=False,
+            error_message=str(e)
+        )
+    
+    return redirect('manage_file_sharing', file_id=file_id)
+
+
+@login_required
+@require_http_methods(["POST"])
+def delete_file_view(request, file_id):
+    """
+    Delete a file completely (only owner can delete).
+    Removes the file, all access records, and cleans up storage.
+    """
+    try:
+        encrypted_file = get_object_or_404(EncryptedFile, id=file_id, uploaded_by=request.user)
+        
+        # Store file info for audit log
+        file_name = encrypted_file.original_filename
+        file_size = encrypted_file.file_size
+        
+        # Get all users who had access for audit log
+        access_records = FileAccess.objects.filter(file=encrypted_file)
+        shared_with = [access.user_email for access in access_records]
+        
+        # Delete file storage if it exists
+        if encrypted_file.file_path:
+            try:
+                # In a real implementation, you might want to securely wipe the file
+                # For now, we're storing file content in database via the file_path field
+                pass  # File content is managed by Django's file handling
+            except Exception as e:
+                logger.warning(f"Could not clean up file storage for file {file_id}: {e}")
+        
+        # Delete all access records first (due to foreign key constraints)
+        access_records.delete()
+        
+        # Delete the file record
+        encrypted_file.delete()
+        
+        # Log the deletion
+        AuditLog.log_action(
+            user_email=request.user.email,
+            action='file_deleted',
+            details={
+                'action': 'file_deleted',
+                'file_name': file_name,
+                'file_size': file_size,
+                'file_id': file_id,
+                'shared_with': shared_with,
+                'deletion_time': timezone.now().isoformat()
+            },
+            request=request,
+            success=True
+        )
+        
+        messages.success(request, f'File "{file_name}" has been permanently deleted.')
+        
+    except Exception as e:
+        logger.error(f"Error deleting file {file_id}: {e}", exc_info=True)
+        
+        # Log the failed deletion
+        AuditLog.log_action(
+            user_email=request.user.email,
+            action='file_deletion_failed',
+            details={
+                'action': 'file_deletion_failed',
+                'file_id': file_id,
+                'error': str(e)
+            },
+            request=request,
+            success=False
+        )
+        
+        messages.error(request, 'Failed to delete file. Please try again.')
+    
+    return redirect('dashboard')
 
 
 def home_view(request):

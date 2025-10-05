@@ -126,6 +126,9 @@
                                             <a href="{% url 'download_file' file.id %}" class="btn btn-outline-primary btn-sm">
                                                 <i class="bi bi-download"></i>
                                             </a>
+                                            <a href="{% url 'manage_file_sharing' file.id %}" class="btn btn-outline-success btn-sm">
+                                                <i class="bi bi-share"></i>
+                                            </a>
                                             <button class="btn btn-outline-info btn-sm file-details-btn" 
                                                     data-file-id="{{ file.id }}"
                                                     data-filename="{{ file.filename }}"
@@ -133,6 +136,11 @@
                                                     data-size="{{ file.file_size }}"
                                                     data-shared-emails="{% for access in file.access_records.all %}{{ access.user_email }}{% if not forloop.last %},{% endif %}{% endfor %}">
                                                 <i class="bi bi-info-circle"></i>
+                                            </button>
+                                            <button class="btn btn-outline-danger btn-sm delete-file-btn" 
+                                                    data-file-id="{{ file.id }}"
+                                                    data-filename="{{ file.filename }}">
+                                                <i class="bi bi-trash"></i>
                                             </button>
                                         </div>
                                     </td>
@@ -384,10 +392,43 @@
     </div>
 </div>
 
+<!-- Delete File Confirmation Modal -->
+<div class="modal fade" id="deleteFileModal" tabindex="-1" aria-labelledby="deleteFileModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="deleteFileModalLabel">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Delete File
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning" role="alert">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Warning!</strong> This action cannot be undone.
+                </div>
+                <p>Are you sure you want to permanently delete the file:</p>
+                <p class="fw-bold text-danger" id="deleteFilename">-</p>
+                <p class="text-muted">This will also remove access for all users who were sharing this file.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form method="post" id="deleteFileForm" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-trash me-2"></i>Delete File
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 // Handle file details button clicks
 document.addEventListener('DOMContentLoaded', function() {
     const fileDetailsBtns = document.querySelectorAll('.file-details-btn');
+    const deleteFileBtns = document.querySelectorAll('.delete-file-btn');
     
     fileDetailsBtns.forEach(btn => {
         btn.addEventListener('click', function() {
@@ -398,6 +439,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const sharedEmails = this.dataset.sharedEmails ? this.dataset.sharedEmails.split(',') : [];
             
             viewFileDetails(fileId, filename, uploaded, size, sharedEmails);
+        });
+    });
+    
+    // Handle delete file button clicks
+    deleteFileBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const fileId = this.dataset.fileId;
+            const filename = this.dataset.filename;
+            
+            showDeleteConfirmation(fileId, filename);
         });
     });
 });
@@ -419,6 +470,16 @@ function viewFileDetails(fileId, filename, uploaded, size, sharedWith) {
     document.getElementById('detailDownloadBtn').href = `/download/${fileId}/`;
     
     new bootstrap.Modal(document.getElementById('fileDetailsModal')).show();
+}
+
+function showDeleteConfirmation(fileId, filename) {
+    document.getElementById('deleteFilename').textContent = filename;
+    
+    // Update the form action with the correct file ID
+    const deleteForm = document.getElementById('deleteFileForm');
+    deleteForm.action = `/files/${fileId}/delete/`;
+    
+    new bootstrap.Modal(document.getElementById('deleteFileModal')).show();
 }
 
 function formatFileSize(bytes) {

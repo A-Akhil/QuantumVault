@@ -17,6 +17,10 @@ urlpatterns = [
     path('dashboard/', views.dashboard_view, name='dashboard'),
     path('upload/', views.upload_file_view, name='upload_file'),
     path('download/<int:file_id>/', views.download_file_view, name='download_file'),
+    path('files/<int:file_id>/share/', views.manage_file_sharing_view, name='manage_file_sharing'),
+    path('files/<int:file_id>/access/add/', views.add_file_access_view, name='add_file_access'),
+    path('files/<int:file_id>/access/remove/', views.remove_file_access_view, name='remove_file_access'),
+    path('files/<int:file_id>/delete/', views.delete_file_view, name='delete_file'),
     
     # Audit and monitoring
     path('audit/', views.audit_logs_view, name='audit_logs'),

@@ -1,0 +1,201 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Manage File Sharing - {{ file.filename }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <!-- File Information Header -->
+        <div class="quantum-card card mb-4">
+            <div class="card-header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <h4 class="mb-1">
+                            <i class="bi bi-share me-2"></i>Manage File Sharing
+                        </h4>
+                        <h6 class="text-muted mb-0">{{ file.filename }}</h6>
+                    </div>
+                    <div class="text-end">
+                        <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3"><strong>File Size:</strong></div>
+                    <div class="col-md-3">{{ file.file_size|filesizeformat }}</div>
+                    <div class="col-md-3"><strong>Uploaded:</strong></div>
+                    <div class="col-md-3">{{ file.created_at|date:"M d, Y H:i" }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Current Access -->
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="quantum-card card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="bi bi-people me-2"></i>Current Access
+                            <span class="badge bg-primary ms-2">{{ current_access.count }} user{{ current_access.count|pluralize }}</span>
+                        </h5>
+                    </div>
+                    <div class="card-body p-0">
+                        {% if current_access %}
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="border-0">User</th>
+                                            <th class="border-0">Access Granted</th>
+                                            <th class="border-0">Granted By</th>
+                                            <th class="border-0">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- File Owner -->
+                                        <tr class="table-success">
+                                            <td>
+                                                <div class="d-flex align-items-center">
+                                                    <i class="bi bi-person-fill me-2 text-success"></i>
+                                                    <div>
+                                                        <div class="fw-bold">{{ file.uploaded_by.email }}</div>
+                                                        <small class="text-muted">{{ file.uploaded_by.get_full_name|default:file.uploaded_by.username }}</small>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">{{ file.created_at|date:"M d, Y H:i" }}</small>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-success">Owner</span>
+                                            </td>
+                                            <td>
+                                                <span class="text-muted small">Cannot remove</span>
+                                            </td>
+                                        </tr>
+                                        
+                                        <!-- Shared Users -->
+                                        {% for access in current_access %}
+                                        <tr>
+                                            <td>
+                                                <div class="d-flex align-items-center">
+                                                    <i class="bi bi-person me-2 text-muted"></i>
+                                                    <div>
+                                                        <div>{{ access.user_email }}</div>
+                                                        <small class="text-muted">Shared user</small>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">{{ access.created_at|date:"M d, Y H:i" }}</small>
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">{{ access.granted_by.get_full_name|default:access.granted_by.username }}</small>
+                                            </td>
+                                            <td>
+                                                <form method="post" action="{% url 'remove_file_access' file.id %}" class="d-inline">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="user_email" value="{{ access.user_email }}">
+                                                    <button type="submit" class="btn btn-outline-danger btn-sm" 
+                                                            onclick="return confirm('Are you sure you want to remove access for {{ access.user_email }}?')">
+                                                        <i class="bi bi-person-dash"></i>
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="text-center py-4">
+                                <i class="bi bi-people text-muted" style="font-size: 2rem;"></i>
+                                <h6 class="mt-2 text-muted">File not shared</h6>
+                                <p class="text-muted small mb-0">Only you have access to this file</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Add New Access -->
+            <div class="col-lg-4">
+                <div class="quantum-card card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="bi bi-person-plus me-2"></i>Add Access
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="post" action="{% url 'add_file_access' file.id %}">
+                            {% csrf_token %}
+                            <div class="mb-3">
+                                <label for="user_email" class="form-label">
+                                    <i class="bi bi-envelope me-1"></i>Select User
+                                </label>
+                                <select class="form-select" id="user_email" name="user_email" required>
+                                    <option value="">Choose a user...</option>
+                                    {% for user in all_users %}
+                                        <option value="{{ user.email }}">
+                                            {{ user.email }} ({{ user.get_full_name|default:user.username }})
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">
+                                    Select a user to grant access to this file. They will be able to download and decrypt it.
+                                </div>
+                            </div>
+
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary quantum-btn">
+                                    <i class="bi bi-shield-lock me-2"></i>Grant Access
+                                </button>
+                            </div>
+                        </form>
+
+                        <!-- Security Notice -->
+                        <div class="alert alert-info mt-3 d-flex align-items-start" role="alert">
+                            <i class="bi bi-info-circle-fill me-2 mt-1"></i>
+                            <div class="small">
+                                <strong>Quantum-Safe:</strong> The AES encryption key will be securely wrapped using the recipient's Kyber768 public key.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Stats -->
+                <div class="quantum-card card mt-3">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="bi bi-bar-chart me-2"></i>Access Statistics
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-6">
+                                <div class="mb-1">
+                                    <i class="bi bi-people text-primary" style="font-size: 1.5rem;"></i>
+                                </div>
+                                <h6 class="small fw-bold">{{ current_access.count|add:1 }}</h6>
+                                <p class="small text-muted mb-0">Total Users</p>
+                            </div>
+                            <div class="col-6">
+                                <div class="mb-1">
+                                    <i class="bi bi-shield-check text-success" style="font-size: 1.5rem;"></i>
+                                </div>
+                                <h6 class="small fw-bold">{{ current_access.count }}</h6>
+                                <p class="small text-muted mb-0">Shared Access</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+{% endblock %}

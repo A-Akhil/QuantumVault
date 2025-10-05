@@ -93,7 +93,15 @@ class EncryptedFile(models.Model):
 
     def get_recipient_emails(self):
         """Get list of all users who have access to this file"""
-        return list(self.wrapped_keys.keys()) if self.wrapped_keys else []
+        if not self.wrapped_keys:
+            return []
+        
+        # Filter out non-email entries (kyber_ct entries and metadata)
+        emails = []
+        for key in self.wrapped_keys.keys():
+            if not key.endswith('_kyber_ct') and not key.startswith('_'):
+                emails.append(key)
+        return emails
 
 
 class FileAccess(models.Model):

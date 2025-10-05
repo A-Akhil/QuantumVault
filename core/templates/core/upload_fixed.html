@@ -27,12 +27,11 @@
 
             <!-- Upload Form -->
             <div class="row">
-                <!-- File Upload Section -->
-                <div class="col-lg-8">
+                <div class="col-lg-8 mx-auto">
                     <div class="quantum-card">
                         <div class="card-header">
                             <h5 class="mb-0 fw-bold">
-                                <i class="bi bi-file-earmark-arrow-up me-2 text-primary"></i>Upload File
+                                <i class="bi bi-file-earmark-arrow-up me-2 text-primary"></i>Select File and Recipients
                             </h5>
                         </div>
                         <div class="card-body">
@@ -53,6 +52,51 @@
                                             {% for error in form.file.errors %}{{ error }}{% endfor %}
                                         </div>
                                     {% endif %}
+                                </div>
+
+                                <!-- Recipients Selection -->
+                                <div class="mb-4">
+                                    <label class="form-label">
+                                        <i class="bi bi-people me-2"></i>Share with Users
+                                    </label>
+                                    
+                                    <!-- Search Input -->
+                                    <div class="mb-3">
+                                        <input type="text" class="form-control" id="userSearch" placeholder="Type to search users..." autocomplete="off">
+                                        <div class="form-text text-muted">Start typing to filter users by email or name</div>
+                                    </div>
+                                    
+                                    <div class="row">
+                                        <div class="col-md-8">
+                                            <select class="form-select" id="user_select" name="recipients" multiple size="6">
+                                                <option value="" disabled class="text-muted">Choose users to share with...</option>
+                                                {% for user in available_users %}
+                                                    <option value="{{ user.email }}" data-search="{{ user.email|lower }} {{ user.get_full_name|default:user.username|lower }}">
+                                                        {{ user.email }} ({{ user.get_full_name|default:user.username }})
+                                                    </option>
+                                                {% endfor %}
+                                            </select>
+                                            <div class="form-text text-muted">
+                                                Hold Ctrl/Cmd to select multiple users. The file will be encrypted for each selected user.
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="d-grid gap-2">
+                                                <button type="button" class="btn btn-outline-secondary btn-sm" id="selectAll">
+                                                    <i class="bi bi-check-all me-1"></i>Select All Visible
+                                                </button>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSelection">
+                                                    <i class="bi bi-x-circle me-1"></i>Clear Selection
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Selected Users Display -->
+                                    <div class="mt-3" id="selectedUsers" style="display: none;">
+                                        <label class="form-label small text-secondary">Selected Recipients:</label>
+                                        <div id="selectedUsersList" class="d-flex flex-wrap gap-2"></div>
+                                    </div>
                                 </div>
 
                                 <!-- Description (Optional) -->
@@ -95,63 +139,6 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- User Selection Section -->
-                <div class="col-lg-4">
-                    <div class="quantum-card">
-                        <div class="card-header">
-                            <h5 class="mb-0 fw-bold">
-                                <i class="bi bi-people me-2 text-primary"></i>Share with Users
-                            </h5>
-                        </div>
-                        <div class="card-body">
-                            <!-- Search Input -->
-                            <div class="mb-3">
-                                <label for="userSearch" class="form-label">
-                                    <i class="bi bi-search me-2"></i>Search Users
-                                </label>
-                                <input type="text" class="form-control" id="userSearch" placeholder="Type to search users..." autocomplete="off">
-                                <div class="form-text text-muted">Start typing to filter users by email or name</div>
-                            </div>
-                            
-                            <!-- User Selection -->
-                            <div class="mb-3">
-                                <label for="user_select" class="form-label">
-                                    <i class="bi bi-person-check me-2"></i>Select Recipients
-                                </label>
-                                <select class="form-select" id="user_select" name="recipients" multiple size="8">
-                                    <option value="" disabled class="text-muted">Choose users to share with...</option>
-                                    {% for user in available_users %}
-                                        <option value="{{ user.email }}" data-search="{{ user.email|lower }} {{ user.get_full_name|default:user.username|lower }}">
-                                            {{ user.email }} ({{ user.get_full_name|default:user.username }})
-                                        </option>
-                                    {% endfor %}
-                                </select>
-                                <div class="form-text text-muted">
-                                    Hold Ctrl/Cmd to select multiple users. The file will be encrypted for each selected user.
-                                </div>
-                            </div>
-                            
-                            <!-- Action Buttons -->
-                            <div class="d-grid gap-2 mb-3">
-                                <button type="button" class="btn btn-outline-secondary btn-sm" id="selectAll">
-                                    <i class="bi bi-check-all me-1"></i>Select All Visible
-                                </button>
-                                <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSelection">
-                                    <i class="bi bi-x-circle me-1"></i>Clear Selection
-                                </button>
-                            </div>
-                            
-                            <!-- Selected Users Display -->
-                            <div id="selectedUsers" style="display: none;">
-                                <label class="form-label small text-secondary">
-                                    <i class="bi bi-people-fill me-1"></i>Selected Recipients:
-                                </label>
-                                <div id="selectedUsersList" class="d-flex flex-wrap gap-2"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -191,7 +178,7 @@
 
     /* User select styling */
     #user_select {
-        min-height: 200px;
+        min-height: 150px;
         border: 2px solid var(--border-color);
         border-radius: 12px;
         transition: all 0.2s ease;
@@ -378,20 +365,6 @@ document.addEventListener('DOMContentLoaded', function() {
             userSearch.focus();
             return;
         }
-
-        // Add hidden inputs for selected recipients to the form
-        // Remove any existing recipient inputs first
-        const existingInputs = uploadForm.querySelectorAll('input[name="recipients"]');
-        existingInputs.forEach(input => input.remove());
-        
-        // Add new hidden inputs for each selected recipient
-        selectedOptions.forEach(option => {
-            const hiddenInput = document.createElement('input');
-            hiddenInput.type = 'hidden';
-            hiddenInput.name = 'recipients';
-            hiddenInput.value = option.value;
-            uploadForm.appendChild(hiddenInput);
-        });
 
         // Show upload progress modal
         const uploadProgressModal = new bootstrap.Modal(document.getElementById('uploadProgressModal'));

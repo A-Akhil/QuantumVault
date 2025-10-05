@@ -1,0 +1,166 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Register - Quantum-Safe File Storage{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-5">
+        <div class="quantum-card card">
+            <div class="card-header quantum-header text-center">
+                <h4 class="mb-0">
+                    <i class="bi bi-person-plus me-2"></i>Create Account
+                </h4>
+                <p class="small mb-0 mt-2 opacity-75">Join the quantum-safe file storage system</p>
+            </div>
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="{{ form.username.id_for_label }}" class="form-label">
+                            <i class="bi bi-person me-1"></i>Username
+                        </label>
+                        {{ form.username }}
+                        {% if form.username.errors %}
+                            <div class="text-danger small mt-1">
+                                {% for error in form.username.errors %}
+                                    <div>{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="{{ form.first_name.id_for_label }}" class="form-label">
+                                    First Name
+                                </label>
+                                {{ form.first_name }}
+                                {% if form.first_name.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {% for error in form.first_name.errors %}
+                                            <div>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="{{ form.last_name.id_for_label }}" class="form-label">
+                                    Last Name
+                                </label>
+                                {{ form.last_name }}
+                                {% if form.last_name.errors %}
+                                    <div class="text-danger small mt-1">
+                                        {% for error in form.last_name.errors %}
+                                            <div>{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.email.id_for_label }}" class="form-label">
+                            <i class="bi bi-envelope me-1"></i>Email Address
+                        </label>
+                        {{ form.email }}
+                        {% if form.email.errors %}
+                            <div class="text-danger small mt-1">
+                                {% for error in form.email.errors %}
+                                    <div>{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.password1.id_for_label }}" class="form-label">
+                            <i class="bi bi-lock me-1"></i>Password
+                        </label>
+                        {{ form.password1 }}
+                        {% if form.password1.errors %}
+                            <div class="text-danger small mt-1">
+                                {% for error in form.password1.errors %}
+                                    <div>{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="{{ form.password2.id_for_label }}" class="form-label">
+                            <i class="bi bi-lock-fill me-1"></i>Confirm Password
+                        </label>
+                        {{ form.password2 }}
+                        {% if form.password2.errors %}
+                            <div class="text-danger small mt-1">
+                                {% for error in form.password2.errors %}
+                                    <div>{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Quantum Key Generation Notice -->
+                    <div class="alert alert-info d-flex align-items-center mb-4" role="alert">
+                        <i class="bi bi-info-circle-fill me-2"></i>
+                        <div class="small">
+                            <strong>Quantum-Safe Keys:</strong> Your Kyber768 and Dilithium3 cryptographic keys will be automatically generated during registration.
+                        </div>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary quantum-btn">
+                            <i class="bi bi-shield-lock me-2"></i>Create Account & Generate Keys
+                        </button>
+                    </div>
+                </form>
+            </div>
+            <div class="card-footer text-center bg-light">
+                <p class="mb-0 small text-muted">
+                    Already have an account? 
+                    <a href="{% url 'login' %}" class="text-decoration-none">Sign in here</a>
+                </p>
+            </div>
+        </div>
+
+        <!-- Security Information -->
+        <div class="quantum-card card mt-4">
+            <div class="card-header">
+                <h6 class="mb-0">
+                    <i class="bi bi-shield-check me-2"></i>Security Features
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-4">
+                        <div class="mb-2">
+                            <i class="bi bi-key text-primary" style="font-size: 1.5rem;"></i>
+                        </div>
+                        <h6 class="small fw-bold">Kyber768</h6>
+                        <p class="small text-muted mb-0">Key Encapsulation</p>
+                    </div>
+                    <div class="col-4">
+                        <div class="mb-2">
+                            <i class="bi bi-pen text-success" style="font-size: 1.5rem;"></i>
+                        </div>
+                        <h6 class="small fw-bold">Dilithium3</h6>
+                        <p class="small text-muted mb-0">Digital Signatures</p>
+                    </div>
+                    <div class="col-4">
+                        <div class="mb-2">
+                            <i class="bi bi-lock text-warning" style="font-size: 1.5rem;"></i>
+                        </div>
+                        <h6 class="small fw-bold">AES-256-GCM</h6>
+                        <p class="small text-muted mb-0">File Encryption</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

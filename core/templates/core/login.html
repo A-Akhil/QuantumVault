@@ -1,0 +1,92 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Login - Quantum-Safe File Storage{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-4">
+        <div class="quantum-card card">
+            <div class="card-header quantum-header text-center">
+                <h4 class="mb-0">
+                    <i class="bi bi-person-circle me-2"></i>Sign In
+                </h4>
+                <p class="small mb-0 mt-2 opacity-75">Access your quantum-safe storage</p>
+            </div>
+            <div class="card-body p-4">
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert alert-{{ message.tags }} d-flex align-items-center" role="alert">
+                            {% if message.tags == 'error' %}
+                                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            {% elif message.tags == 'success' %}
+                                <i class="bi bi-check-circle-fill me-2"></i>
+                            {% else %}
+                                <i class="bi bi-info-circle-fill me-2"></i>
+                            {% endif %}
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label for="{{ form.username.id_for_label }}" class="form-label">
+                            <i class="bi bi-person me-1"></i>Username
+                        </label>
+                        {{ form.username }}
+                        {% if form.username.errors %}
+                            <div class="text-danger small mt-1">
+                                {% for error in form.username.errors %}
+                                    <div>{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="{{ form.password.id_for_label }}" class="form-label">
+                            <i class="bi bi-lock me-1"></i>Password
+                        </label>
+                        {{ form.password }}
+                        {% if form.password.errors %}
+                            <div class="text-danger small mt-1">
+                                {% for error in form.password.errors %}
+                                    <div>{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary quantum-btn">
+                            <i class="bi bi-box-arrow-in-right me-2"></i>Sign In
+                        </button>
+                    </div>
+                </form>
+            </div>
+            <div class="card-footer text-center bg-light">
+                <p class="mb-0 small text-muted">
+                    Don't have an account? 
+                    <a href="{% url 'register' %}" class="text-decoration-none">Create one here</a>
+                </p>
+            </div>
+        </div>
+
+        <!-- Quick Info -->
+        <div class="text-center mt-4">
+            <div class="quantum-card card">
+                <div class="card-body py-3">
+                    <h6 class="small fw-bold mb-2">
+                        <i class="bi bi-shield-shaded me-1"></i>Quantum-Safe Protection
+                    </h6>
+                    <p class="small text-muted mb-0">
+                        Your files are protected using post-quantum cryptography that's secure against both classical and quantum computer attacks.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

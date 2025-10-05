@@ -1,0 +1,132 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Home - Quantum-Safe File Storage{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto text-center">
+        <!-- Hero Section -->
+        <div class="quantum-card card mb-5 p-5">
+            <div class="card-body">
+                <div class="mb-4">
+                    <i class="bi bi-shield-lock-fill text-primary" style="font-size: 4rem;"></i>
+                </div>
+                <h1 class="display-4 fw-bold text-primary mb-3">Quantum-Safe File Storage</h1>
+                <p class="lead text-muted mb-4">
+                    Secure your files with cutting-edge post-quantum cryptography. 
+                    Upload, encrypt, and share files with confidence using Kyber768 and Dilithium3 algorithms.
+                </p>
+                
+                {% if not user.is_authenticated %}
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                        <a href="{% url 'register' %}" class="btn btn-primary btn-lg quantum-btn me-md-2">
+                            <i class="bi bi-person-plus me-2"></i>Get Started
+                        </a>
+                        <a href="{% url 'login' %}" class="btn btn-outline-primary btn-lg quantum-btn">
+                            <i class="bi bi-box-arrow-in-right me-2"></i>Sign In
+                        </a>
+                    </div>
+                {% else %}
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                        <a href="{% url 'dashboard' %}" class="btn btn-primary btn-lg quantum-btn me-md-2">
+                            <i class="bi bi-speedometer2 me-2"></i>Go to Dashboard
+                        </a>
+                        <a href="{% url 'upload_file' %}" class="btn btn-outline-primary btn-lg quantum-btn">
+                            <i class="bi bi-cloud-upload me-2"></i>Upload File
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Features Section -->
+        <div class="row g-4 mb-5">
+            <div class="col-md-4">
+                <div class="quantum-card card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="mb-3">
+                            <i class="bi bi-shield-check text-success" style="font-size: 3rem;"></i>
+                        </div>
+                        <h5 class="fw-bold">Post-Quantum Security</h5>
+                        <p class="text-muted small">
+                            Protected against both classical and quantum computer attacks using 
+                            NIST-standardized Kyber768 and Dilithium3 algorithms.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="quantum-card card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="mb-3">
+                            <i class="bi bi-people text-info" style="font-size: 3rem;"></i>
+                        </div>
+                        <h5 class="fw-bold">Secure Sharing</h5>
+                        <p class="text-muted small">
+                            Share files securely with specific users through email-based access control 
+                            and quantum-safe key encapsulation.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="quantum-card card h-100">
+                    <div class="card-body text-center p-4">
+                        <div class="mb-3">
+                            <i class="bi bi-journal-check text-warning" style="font-size: 3rem;"></i>
+                        </div>
+                        <h5 class="fw-bold">Audit Trail</h5>
+                        <p class="text-muted small">
+                            Complete audit logging of all file operations with digital signatures 
+                            for integrity verification and compliance.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Technical Details -->
+        <div class="quantum-card card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-gear me-2"></i>Technical Specifications
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-start">
+                    <div class="col-md-6">
+                        <h6 class="fw-bold text-primary">Encryption</h6>
+                        <ul class="list-unstyled small">
+                            <li><i class="bi bi-check text-success me-2"></i>AES-256-GCM for file content</li>
+                            <li><i class="bi bi-check text-success me-2"></i>Kyber768 for key encapsulation</li>
+                            <li><i class="bi bi-check text-success me-2"></i>96-bit nonces for security</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="fw-bold text-primary">Digital Signatures</h6>
+                        <ul class="list-unstyled small">
+                            <li><i class="bi bi-check text-success me-2"></i>Dilithium3 for metadata signing</li>
+                            <li><i class="bi bi-check text-success me-2"></i>File integrity verification</li>
+                            <li><i class="bi bi-check text-success me-2"></i>Non-repudiation guarantees</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <div class="alert alert-info d-flex align-items-center" role="alert">
+                            <i class="bi bi-info-circle-fill me-2"></i>
+                            <div class="small">
+                                <strong>College Project Notice:</strong> This system implements quantum-safe cryptography 
+                                for educational purposes. Private keys and passwords are stored in plaintext for simplicity.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

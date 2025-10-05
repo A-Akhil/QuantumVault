@@ -1,0 +1,32 @@
+"""
+URL configuration for core app.
+"""
+
+from django.urls import path
+from . import views
+from . import api_views
+
+urlpatterns = [
+    # Authentication URLs
+    path('', views.home_view, name='home'),
+    path('register/', views.register_view, name='register'),
+    path('login/', views.login_view, name='login'),
+    path('logout/', views.logout_view, name='logout'),
+    
+    # Dashboard and file management
+    path('dashboard/', views.dashboard_view, name='dashboard'),
+    path('upload/', views.upload_file_view, name='upload_file'),
+    path('download/<int:file_id>/', views.download_file_view, name='download_file'),
+    
+    # Audit and monitoring
+    path('audit/', views.audit_logs_view, name='audit_logs'),
+    
+    # API endpoints for backend testing
+    path('api/status/', api_views.api_status, name='api_status'),
+    path('api/register/', api_views.api_register, name='api_register'),
+    path('api/login/', api_views.api_login, name='api_login'),
+    path('api/upload/', api_views.api_upload_file, name='api_upload'),
+    path('api/files/', api_views.api_list_files, name='api_list_files'),
+    path('api/download/<int:file_id>/', api_views.api_download_file, name='api_download'),
+    path('api/audit/', api_views.api_audit_logs, name='api_audit'),
+]

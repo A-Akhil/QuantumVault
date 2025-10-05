@@ -1,0 +1,432 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Dashboard - Quantum-Safe File Storage{% endblock %}
+
+{% block content %}
+<!-- Dashboard Header -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="quantum-card card">
+            <div class="card-body d-flex align-items-center justify-content-between">
+                <div>
+                    <h4 class="mb-1">
+                        <i class="bi bi-speedometer2 me-2"></i>Dashboard
+                    </h4>
+                    <p class="text-muted mb-0">Welcome back, {{ user.get_full_name|default:user.username }}!</p>
+                </div>
+                <div class="text-end">
+                    <button type="button" class="btn btn-primary quantum-btn" data-bs-toggle="modal" data-bs-target="#uploadModal">
+                        <i class="bi bi-cloud-upload me-2"></i>Upload File
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-3 col-sm-6 mb-3">
+        <div class="quantum-card card h-100">
+            <div class="card-body text-center">
+                <div class="mb-2">
+                    <i class="bi bi-file-earmark-arrow-up text-primary" style="font-size: 2rem;"></i>
+                </div>
+                <h5 class="card-title">{{ my_files_count }}</h5>
+                <p class="card-text small text-muted">Files Uploaded</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+        <div class="quantum-card card h-100">
+            <div class="card-body text-center">
+                <div class="mb-2">
+                    <i class="bi bi-file-earmark-arrow-down text-success" style="font-size: 2rem;"></i>
+                </div>
+                <h5 class="card-title">{{ shared_files_count }}</h5>
+                <p class="card-text small text-muted">Files Shared With Me</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+        <div class="quantum-card card h-100">
+            <div class="card-body text-center">
+                <div class="mb-2">
+                    <i class="bi bi-people text-warning" style="font-size: 2rem;"></i>
+                </div>
+                <h5 class="card-title">{{ total_shares }}</h5>
+                <p class="card-text small text-muted">Total Shares</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+        <div class="quantum-card card h-100">
+            <div class="card-body text-center">
+                <div class="mb-2">
+                    <i class="bi bi-shield-check text-info" style="font-size: 2rem;"></i>
+                </div>
+                <h5 class="card-title">{{ recent_activities }}</h5>
+                <p class="card-text small text-muted">Recent Activities</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Files Section -->
+<div class="row">
+    <!-- My Files -->
+    <div class="col-lg-6 mb-4">
+        <div class="quantum-card card h-100">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h5 class="mb-0">
+                    <i class="bi bi-folder2-open me-2"></i>My Files
+                </h5>
+                <span class="badge bg-primary">{{ my_files_count }}</span>
+            </div>
+            <div class="card-body p-0">
+                {% if my_files %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="border-0">
+                                        <i class="bi bi-file-text me-1"></i>File
+                                    </th>
+                                    <th class="border-0">
+                                        <i class="bi bi-people me-1"></i>Shared
+                                    </th>
+                                    <th class="border-0">
+                                        <i class="bi bi-calendar me-1"></i>Uploaded
+                                    </th>
+                                    <th class="border-0">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for file in my_files %}
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-file-earmark me-2 text-muted"></i>
+                                            <div>
+                                                <div class="fw-medium">{{ file.filename }}</div>
+                                                <small class="text-muted">{{ file.file_size|filesizeformat }}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-light text-dark">
+                                            {{ file.access_records.count }} user{{ file.access_records.count|pluralize }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">{{ file.created_at|date:"M d, Y" }}</small>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <a href="{% url 'download_file' file.id %}" class="btn btn-outline-primary btn-sm">
+                                                <i class="bi bi-download"></i>
+                                            </a>
+                                            <button class="btn btn-outline-info btn-sm file-details-btn" 
+                                                    data-file-id="{{ file.id }}"
+                                                    data-filename="{{ file.filename }}"
+                                                    data-uploaded="{{ file.created_at|date:'M d, Y H:i' }}"
+                                                    data-size="{{ file.file_size }}"
+                                                    data-shared-emails="{% for access in file.access_records.all %}{{ access.user_email }}{% if not forloop.last %},{% endif %}{% endfor %}">
+                                                <i class="bi bi-info-circle"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-folder2 text-muted" style="font-size: 3rem;"></i>
+                        <h6 class="mt-3 text-muted">No files uploaded yet</h6>
+                        <p class="text-muted small">Upload your first file to get started!</p>
+                        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#uploadModal">
+                            <i class="bi bi-cloud-upload me-1"></i>Upload File
+                        </button>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Shared With Me -->
+    <div class="col-lg-6 mb-4">
+        <div class="quantum-card card h-100">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h5 class="mb-0">
+                    <i class="bi bi-share me-2"></i>Shared With Me
+                </h5>
+                <span class="badge bg-success">{{ shared_files_count }}</span>
+            </div>
+            <div class="card-body p-0">
+                {% if shared_files %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="border-0">
+                                        <i class="bi bi-file-text me-1"></i>File
+                                    </th>
+                                    <th class="border-0">
+                                        <i class="bi bi-person me-1"></i>From
+                                    </th>
+                                    <th class="border-0">
+                                        <i class="bi bi-calendar me-1"></i>Shared
+                                    </th>
+                                    <th class="border-0">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for access in shared_files %}
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-file-earmark me-2 text-muted"></i>
+                                            <div>
+                                                <div class="fw-medium">{{ access.file.filename }}</div>
+                                                <small class="text-muted">{{ access.file.file_size|filesizeformat }}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-person-circle me-1 text-muted"></i>
+                                            <small>{{ access.file.uploaded_by.get_full_name|default:access.file.uploaded_by.username }}</small>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">{{ access.created_at|date:"M d, Y" }}</small>
+                                    </td>
+                                    <td>
+                                        <a href="{% url 'download_file' access.file.id %}" class="btn btn-outline-primary btn-sm">
+                                            <i class="bi bi-download"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-share text-muted" style="font-size: 3rem;"></i>
+                        <h6 class="mt-3 text-muted">No files shared with you</h6>
+                        <p class="text-muted small">Files shared with you will appear here</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity -->
+<div class="row">
+    <div class="col-12">
+        <div class="quantum-card card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-clock-history me-2"></i>Recent Activity
+                </h5>
+            </div>
+            <div class="card-body p-0">
+                {% if recent_audit_logs %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="border-0">Action</th>
+                                    <th class="border-0">File</th>
+                                    <th class="border-0">Details</th>
+                                    <th class="border-0">Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in recent_audit_logs %}
+                                <tr>
+                                    <td>
+                                        {% if log.action == 'upload' %}
+                                            <span class="badge bg-primary">
+                                                <i class="bi bi-upload me-1"></i>Upload
+                                            </span>
+                                        {% elif log.action == 'download' %}
+                                            <span class="badge bg-success">
+                                                <i class="bi bi-download me-1"></i>Download
+                                            </span>
+                                        {% elif log.action == 'share' %}
+                                            <span class="badge bg-info">
+                                                <i class="bi bi-share me-1"></i>Share
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ log.action|title }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <i class="bi bi-file-earmark me-1 text-muted"></i>
+                                        {{ log.file.filename|default:"N/A" }}
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">{{ log.details|default:"No details" }}</small>
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">{{ log.timestamp|timesince }} ago</small>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="bi bi-clock-history text-muted" style="font-size: 2rem;"></i>
+                        <h6 class="mt-2 text-muted">No recent activity</h6>
+                        <p class="text-muted small mb-0">Your recent file activities will appear here</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header quantum-header">
+                <h5 class="modal-title" id="uploadModalLabel">
+                    <i class="bi bi-cloud-upload me-2"></i>Upload File
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="{% url 'upload_file' %}" enctype="multipart/form-data">
+                <div class="modal-body">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="file" class="form-label">
+                            <i class="bi bi-file-earmark me-1"></i>Select File
+                        </label>
+                        <input type="file" class="form-control" id="file" name="file" required>
+                        <div class="form-text">Choose any file to upload and share securely</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="recipients" class="form-label">
+                            <i class="bi bi-people me-1"></i>Share with (Email addresses)
+                        </label>
+                        <textarea class="form-control" id="recipients" name="recipients" rows="3" 
+                                  placeholder="Enter email addresses separated by commas&#10;Example: user1@example.com, user2@example.com"></textarea>
+                        <div class="form-text">Enter email addresses of users you want to share this file with. Leave empty to keep private.</div>
+                    </div>
+
+                    <div class="alert alert-info d-flex align-items-center" role="alert">
+                        <i class="bi bi-shield-lock me-2"></i>
+                        <div class="small">
+                            <strong>Encryption:</strong> Your file will be encrypted with AES-256-GCM and keys will be securely wrapped using Kyber768 for each recipient.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary quantum-btn">
+                        <i class="bi bi-shield-lock me-2"></i>Encrypt & Upload
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- File Details Modal -->
+<div class="modal fade" id="fileDetailsModal" tabindex="-1" aria-labelledby="fileDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header quantum-header">
+                <h5 class="modal-title" id="fileDetailsModalLabel">
+                    <i class="bi bi-info-circle me-2"></i>File Details
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-sm-4"><strong>Filename:</strong></div>
+                    <div class="col-sm-8" id="detailFilename">-</div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-sm-4"><strong>Size:</strong></div>
+                    <div class="col-sm-8" id="detailSize">-</div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-sm-4"><strong>Uploaded:</strong></div>
+                    <div class="col-sm-8" id="detailUploaded">-</div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-sm-4"><strong>Shared with:</strong></div>
+                    <div class="col-sm-8">
+                        <div id="detailSharedWith">-</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <a href="#" class="btn btn-primary quantum-btn" id="detailDownloadBtn">
+                    <i class="bi bi-download me-2"></i>Download
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Handle file details button clicks
+document.addEventListener('DOMContentLoaded', function() {
+    const fileDetailsBtns = document.querySelectorAll('.file-details-btn');
+    
+    fileDetailsBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const fileId = this.dataset.fileId;
+            const filename = this.dataset.filename;
+            const uploaded = this.dataset.uploaded;
+            const size = parseInt(this.dataset.size);
+            const sharedEmails = this.dataset.sharedEmails ? this.dataset.sharedEmails.split(',') : [];
+            
+            viewFileDetails(fileId, filename, uploaded, size, sharedEmails);
+        });
+    });
+});
+
+function viewFileDetails(fileId, filename, uploaded, size, sharedWith) {
+    document.getElementById('detailFilename').textContent = filename;
+    document.getElementById('detailSize').textContent = formatFileSize(size);
+    document.getElementById('detailUploaded').textContent = uploaded;
+    
+    const sharedWithDiv = document.getElementById('detailSharedWith');
+    if (sharedWith.length > 0 && sharedWith[0] !== '') {
+        sharedWithDiv.innerHTML = sharedWith.map(email => 
+            `<span class="badge bg-light text-dark me-1 mb-1">${email.trim()}</span>`
+        ).join('');
+    } else {
+        sharedWithDiv.innerHTML = '<span class="text-muted">Not shared</span>';
+    }
+    
+    document.getElementById('detailDownloadBtn').href = `/download/${fileId}/`;
+    
+    new bootstrap.Modal(document.getElementById('fileDetailsModal')).show();
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+</script>
+{% endblock %}

@@ -1,0 +1,129 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Audit Logs - Quantum-Safe File Storage{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="quantum-card card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="bi bi-clipboard-data me-2"></i>Audit Logs
+                </h4>
+                <p class="text-muted mb-0 mt-2">Your recent activity and security events</p>
+            </div>
+            <div class="card-body p-0">
+                {% if logs %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="border-0">Timestamp</th>
+                                    <th class="border-0">Action</th>
+                                    <th class="border-0">File</th>
+                                    <th class="border-0">Details</th>
+                                    <th class="border-0">Status</th>
+                                    <th class="border-0">IP Address</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in logs %}
+                                <tr>
+                                    <td>
+                                        <small class="text-muted">{{ log.timestamp|date:"M d, Y H:i:s" }}</small>
+                                    </td>
+                                    <td>
+                                        {% if log.action == 'upload' %}
+                                            <span class="badge bg-primary">
+                                                <i class="bi bi-upload me-1"></i>Upload
+                                            </span>
+                                        {% elif log.action == 'download' %}
+                                            <span class="badge bg-success">
+                                                <i class="bi bi-download me-1"></i>Download
+                                            </span>
+                                        {% elif log.action == 'login' %}
+                                            <span class="badge bg-info">
+                                                <i class="bi bi-box-arrow-in-right me-1"></i>Login
+                                            </span>
+                                        {% elif log.action == 'logout' %}
+                                            <span class="badge bg-secondary">
+                                                <i class="bi bi-box-arrow-right me-1"></i>Logout
+                                            </span>
+                                        {% elif log.action == 'register' %}
+                                            <span class="badge bg-warning">
+                                                <i class="bi bi-person-plus me-1"></i>Register
+                                            </span>
+                                        {% elif log.action == 'share' %}
+                                            <span class="badge bg-info">
+                                                <i class="bi bi-share me-1"></i>Share
+                                            </span>
+                                        {% elif log.action == 'access_denied' %}
+                                            <span class="badge bg-danger">
+                                                <i class="bi bi-shield-x me-1"></i>Access Denied
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ log.action|title }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if log.file %}
+                                            <i class="bi bi-file-earmark me-1 text-muted"></i>
+                                            {{ log.file.filename }}
+                                        {% else %}
+                                            <span class="text-muted">N/A</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if log.details %}
+                                            <small class="text-muted">
+                                                {% for key, value in log.details.items %}
+                                                    {{ key }}: {{ value }}{% if not forloop.last %}, {% endif %}
+                                                {% endfor %}
+                                            </small>
+                                        {% else %}
+                                            <span class="text-muted">No details</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if log.success %}
+                                            <span class="badge bg-success">
+                                                <i class="bi bi-check-circle me-1"></i>Success
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-danger">
+                                                <i class="bi bi-x-circle me-1"></i>Failed
+                                            </span>
+                                            {% if log.error_message %}
+                                                <div class="small text-danger mt-1">{{ log.error_message }}</div>
+                                            {% endif %}
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">{{ log.ip_address|default:"Unknown" }}</small>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="bi bi-clipboard-data text-muted" style="font-size: 3rem;"></i>
+                        <h6 class="mt-3 text-muted">No audit logs found</h6>
+                        <p class="text-muted small">Your activity logs will appear here</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Back to Dashboard -->
+<div class="row mt-4">
+    <div class="col-12 text-center">
+        <a href="{% url 'dashboard' %}" class="btn btn-outline-primary">
+            <i class="bi bi-arrow-left me-2"></i>Back to Dashboard
+        </a>
+    </div>
+</div>
+{% endblock %}

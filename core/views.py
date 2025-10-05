@@ -242,10 +242,15 @@ def upload_file_view(request):
     """
     if request.method == 'POST':
         form = FileUploadForm(request.POST, request.FILES)
-        if form.is_valid():
+        
+        # Get recipients from the new multi-select format
+        selected_recipients = request.POST.getlist('recipients')
+        # Filter out empty values and the current user's email
+        recipients = [email for email in selected_recipients if email and email != request.user.email]
+        
+        if form.is_valid() and recipients:
             try:
                 uploaded_file = request.FILES['file']
-                recipients = form.cleaned_data['recipients']
                 description = form.cleaned_data.get('description', '')
                 
                 # Read file data
@@ -341,7 +346,7 @@ def upload_file_view(request):
                     success=True
                 )
                 
-                messages.success(request, f'File "{uploaded_file.name}" uploaded and encrypted successfully!')
+                messages.success(request, f'File "{uploaded_file.name}" uploaded and encrypted successfully! Shared with {len(recipients)} user(s).')
                 return redirect('dashboard')
                 
             except Exception as e:
@@ -360,10 +365,24 @@ def upload_file_view(request):
                     success=False,
                     error_message=str(e)
                 )
+                
+                messages.error(request, 'Upload failed. Please try again.')
+        else:
+            if not recipients:
+                messages.error(request, 'Please select at least one user to share the file with.')
+            else:
+                messages.error(request, 'Please correct the errors in the form.')
+    
     else:
         form = FileUploadForm()
     
-    return render(request, 'core/upload.html', {'form': form})
+    # Get available users (excluding current user)
+    available_users = QuantumUser.objects.exclude(email=request.user.email).order_by('email')
+    
+    return render(request, 'core/upload.html', {
+        'form': form,
+        'available_users': available_users
+    })
 
 
 @login_required

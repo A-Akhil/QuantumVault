@@ -120,7 +120,16 @@
                                 </thead>
                                 <tbody id="myFilesTableBody">
                                     {% for file in my_files %}
-                                    <tr style="transition: all 0.2s ease;">
+                                    <tr
+                                        style="transition: all 0.2s ease;"
+                                        data-file-id="{{ file.id }}"
+                                        data-filename="{{ file.filename|escapejs }}"
+                                        data-size="{{ file.file_size }}"
+                                        data-shared-count="{{ file.access_records.count }}"
+                                        data-uploaded-date="{{ file.created_at|date:'M d, Y' }}"
+                                        data-uploaded-datetime="{{ file.created_at|date:'M d, Y H:i' }}"
+                                        data-shared-emails="{% for access in file.access_records.all %}{{ access.user_email }}{% if not forloop.last %},{% endif %}{% endfor %}"
+                                    >
                                         <td>
                                             <div class="d-flex align-items-center">
                                                 <i class="bi bi-file-earmark me-2 text-primary"></i>
@@ -163,6 +172,11 @@
                                     </td>
                                 </tr>
                                 {% endfor %}
+                                <tr id="myFilesNoResultsRow" class="d-none">
+                                    <td colspan="4" class="text-center py-4 text-muted">
+                                        <i class="bi bi-search me-2"></i>No files found
+                                    </td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -225,7 +239,13 @@
                             </thead>
                             <tbody id="sharedFilesTableBody">
                                 {% for access in shared_files %}
-                                <tr>
+                                <tr
+                                    data-file-id="{{ access.file.id }}"
+                                    data-filename="{{ access.file.filename|escapejs }}"
+                                    data-size="{{ access.file.file_size }}"
+                                    data-from-user="{{ access.file.uploaded_by.get_full_name|default:access.file.uploaded_by.username|escapejs }}"
+                                    data-shared-date="{{ access.created_at|date:'M d, Y' }}"
+                                >
                                     <td>
                                         <div class="d-flex align-items-center">
                                             <i class="bi bi-file-earmark me-2 text-muted"></i>
@@ -251,6 +271,11 @@
                                     </td>
                                 </tr>
                                 {% endfor %}
+                                <tr id="sharedFilesNoResultsRow" class="d-none">
+                                    <td colspan="4" class="text-center py-4 text-muted">
+                                        <i class="bi bi-search me-2"></i>No files found
+                                    </td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -309,10 +334,32 @@
                                     </td>
                                     <td>
                                         <i class="bi bi-file-earmark me-1 text-muted"></i>
-                                        {{ log.file.filename|default:"N/A" }}
+                                        {% if log.file %}
+                                            {{ log.file.filename }}
+                                        {% elif log.details.file_name %}
+                                            {{ log.details.file_name }}
+                                        {% elif log.details.filename %}
+                                            {{ log.details.filename }}
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
                                     </td>
                                     <td>
-                                        <small class="text-muted">{{ log.details|default:"No details" }}</small>
+                                        {% if log.details %}
+                                            {% if log.details.items %}
+                                                <div class="small text-muted">
+                                                    {% for key, value in log.details.items %}
+                                                        <div>
+                                                            <strong>{{ key|capfirst }}</strong>: {{ value|default:"-" }}
+                                                        </div>
+                                                    {% endfor %}
+                                                </div>
+                                            {% else %}
+                                                <small class="text-muted">{{ log.details }}</small>
+                                            {% endif %}
+                                        {% else %}
+                                            <small class="text-muted">No details</small>
+                                        {% endif %}
                                     </td>
                                     <td>
                                         <small class="text-muted">{{ log.timestamp|timesince }} ago</small>
@@ -505,157 +552,58 @@ document.addEventListener('DOMContentLoaded', function() {
 
 </script>
 
+
 <script>
-// File data for JavaScript filtering
-const myFiles = [
-    {% for file in my_files %}
-    {
-        id: {{ file.id }},
-        filename: "{{ file.filename|escapejs }}",
-        size: {{ file.file_size }},
-        sharedCount: {{ file.access_records.count }},
-        uploadedDate: "{{ file.created_at|date:'M d, Y' }}",
-        uploadedDateTime: "{{ file.created_at|date:'M d, Y H:i' }}",
-        sharedEmails: "{% for access in file.access_records.all %}{{ access.user_email }}{% if not forloop.last %},{% endif %}{% endfor %}"
-    }{% if not forloop.last %},{% endif %}
-    {% endfor %}
-];
-
-const sharedFiles = [
-    {% for access in shared_files %}
-    {
-        id: {{ access.file.id }},
-        filename: "{{ access.file.filename|escapejs }}",
-        size: {{ access.file.file_size }},
-        fromUser: "{{ access.file.uploaded_by.get_full_name|default:access.file.uploaded_by.username|escapejs }}",
-        sharedDate: "{{ access.created_at|date:'M d, Y' }}"
-    }{% if not forloop.last %},{% endif %}
-    {% endfor %}
-];
-
-// Initialize tables when page loads
 document.addEventListener('DOMContentLoaded', function() {
-    renderMyFiles(myFiles);
-    renderSharedFiles(sharedFiles);
-    
-    // Search functionality for My Files
-    document.getElementById('myFilesSearch').addEventListener('input', function() {
-        const searchTerm = this.value.toLowerCase();
-        const filteredFiles = myFiles.filter(file => 
-            file.filename.toLowerCase().includes(searchTerm)
-        );
-        renderMyFiles(filteredFiles);
-    });
-    
-    // Search functionality for Shared Files
-    document.getElementById('sharedFilesSearch').addEventListener('input', function() {
-        const searchTerm = this.value.toLowerCase();
-        const filteredFiles = sharedFiles.filter(file => 
-            file.filename.toLowerCase().includes(searchTerm) ||
-            file.fromUser.toLowerCase().includes(searchTerm)
-        );
-        renderSharedFiles(filteredFiles);
-    });
+    const myFilesSearchInput = document.getElementById('myFilesSearch');
+    const sharedFilesSearchInput = document.getElementById('sharedFilesSearch');
+    const myFilesTableBody = document.getElementById('myFilesTableBody');
+    const sharedFilesTableBody = document.getElementById('sharedFilesTableBody');
+    const myFilesNoResultsRow = document.getElementById('myFilesNoResultsRow');
+    const sharedFilesNoResultsRow = document.getElementById('sharedFilesNoResultsRow');
+
+    const myFileRows = myFilesTableBody ? Array.from(myFilesTableBody.querySelectorAll('tr[data-file-id]')) : [];
+    const sharedFileRows = sharedFilesTableBody ? Array.from(sharedFilesTableBody.querySelectorAll('tr[data-file-id]')) : [];
+
+    if (myFilesSearchInput) {
+        myFilesSearchInput.addEventListener('input', function() {
+            filterTableRows(myFileRows, this.value, myFilesNoResultsRow, row => [
+                row.dataset.filename,
+                row.dataset.sharedEmails || ''
+            ]);
+        });
+    }
+
+    if (sharedFilesSearchInput) {
+        sharedFilesSearchInput.addEventListener('input', function() {
+            filterTableRows(sharedFileRows, this.value, sharedFilesNoResultsRow, row => [
+                row.dataset.filename,
+                row.dataset.fromUser || ''
+            ]);
+        });
+    }
 });
 
-function renderMyFiles(files) {
-    const tbody = document.getElementById('myFilesTableBody');
-    if (files.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="4" class="text-center py-4 text-muted">
-                    <i class="bi bi-search me-2"></i>No files found
-                </td>
-            </tr>
-        `;
-        return;
-    }
-    
-    // Limit to 8 files
-    const displayFiles = files.slice(0, 8);
-    tbody.innerHTML = displayFiles.map(file => `
-        <tr style="transition: all 0.2s ease;">
-            <td>
-                <div class="d-flex align-items-center">
-                    <i class="bi bi-file-earmark me-2 text-primary"></i>
-                    <div>
-                        <div class="fw-medium">${file.filename}</div>
-                        <small class="text-muted">${formatFileSize(file.size)}</small>
-                    </div>
-                </div>
-            </td>
-            <td>
-                <span class="badge" style="background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); border: 1px solid rgba(59, 130, 246, 0.2);">
-                    ${file.sharedCount} user${file.sharedCount !== 1 ? 's' : ''}
-                </span>
-            </td>
-            <td>
-                <small class="text-muted">${file.uploadedDate}</small>
-            </td>
-            <td>
-                <div class="btn-group btn-group-sm" role="group">
-                    <a href="/download/${file.id}/" class="btn btn-outline-primary btn-sm">
-                        <i class="bi bi-download"></i>
-                    </a>
-                    <a href="/files/${file.id}/share/" class="btn btn-outline-success btn-sm">
-                        <i class="bi bi-share"></i>
-                    </a>
-                    <button class="btn btn-outline-info btn-sm file-details-btn" 
-                            onclick="viewFileDetails(${file.id}, '${file.filename}', '${file.uploadedDateTime}', ${file.size}, '${file.sharedEmails}'.split(','))">
-                        <i class="bi bi-info-circle"></i>
-                    </button>
-                    <button class="btn btn-outline-danger btn-sm delete-file-btn" 
-                            onclick="showDeleteConfirmation(${file.id}, '${file.filename}')">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </div>
-            </td>
-        </tr>
-    `).join('');
-}
+function filterTableRows(rows, searchValue, emptyRow, dataGetter) {
+    const normalizedSearch = (searchValue || '').trim().toLowerCase();
+    let visibleCount = 0;
 
-function renderSharedFiles(files) {
-    const tbody = document.getElementById('sharedFilesTableBody');
-    if (files.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="4" class="text-center py-4 text-muted">
-                    <i class="bi bi-search me-2"></i>No files found
-                </td>
-            </tr>
-        `;
-        return;
+    rows.forEach(row => {
+        const haystacks = dataGetter(row)
+            .join(' ')
+            .toLowerCase();
+
+        const matches = normalizedSearch === '' || haystacks.includes(normalizedSearch);
+        row.classList.toggle('d-none', !matches);
+
+        if (matches) {
+            visibleCount += 1;
+        }
+    });
+
+    if (emptyRow) {
+        emptyRow.classList.toggle('d-none', visibleCount !== 0);
     }
-    
-    // Limit to 8 files
-    const displayFiles = files.slice(0, 8);
-    tbody.innerHTML = displayFiles.map(file => `
-        <tr>
-            <td>
-                <div class="d-flex align-items-center">
-                    <i class="bi bi-file-earmark me-2 text-muted"></i>
-                    <div>
-                        <div class="fw-medium">${file.filename}</div>
-                        <small class="text-muted">${formatFileSize(file.size)}</small>
-                    </div>
-                </div>
-            </td>
-            <td>
-                <div class="d-flex align-items-center">
-                    <i class="bi bi-person-circle me-1 text-muted"></i>
-                    <small>${file.fromUser}</small>
-                </div>
-            </td>
-            <td>
-                <small class="text-muted">${file.sharedDate}</small>
-            </td>
-            <td>
-                <a href="/download/${file.id}/" class="btn btn-outline-primary btn-sm">
-                    <i class="bi bi-download"></i>
-                </a>
-            </td>
-        </tr>
-    `).join('');
 }
 
 function viewFileDetails(fileId, filename, uploaded, size, sharedWith) {

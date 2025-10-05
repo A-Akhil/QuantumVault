@@ -18,7 +18,7 @@ import base64
 from typing import Optional
 
 from .models import QuantumUser, EncryptedFile, FileAccess, AuditLog, UserGroup
-from .forms import QuantumUserRegistrationForm, QuantumUserLoginForm, FileUploadForm, FileShareForm
+from .forms import QuantumUserRegistrationForm, QuantumUserLoginForm, FileUploadForm, FileShareForm, UserGroupForm
 from .crypto_utils import (
     generate_kyber768_keypair,
     generate_dilithium3_keypair,
@@ -906,6 +906,58 @@ def create_group_view(request):
     }
     
     return render(request, 'core/create_group.html', context)
+
+
+@login_required
+def edit_group_view(request, group_id):
+    """
+    Edit a user group.
+    """
+    try:
+        group = get_object_or_404(UserGroup, id=group_id, created_by=request.user)
+        
+        if request.method == 'POST':
+            form = UserGroupForm(request.POST, instance=group)
+            if form.is_valid():
+                group = form.save()
+                
+                # Handle member selection
+                selected_members = request.POST.getlist('selected_members')
+                
+                # Clear current members and add selected ones
+                group.members.clear()
+                for member_id in selected_members:
+                    try:
+                        member = QuantumUser.objects.get(id=member_id)
+                        if member != request.user:  # Don't add creator as member
+                            group.members.add(member)
+                    except QuantumUser.DoesNotExist:
+                        continue
+                
+                messages.success(request, f'Group "{group.name}" updated successfully!')
+                return redirect('manage_groups')
+            else:
+                messages.error(request, 'Please correct the errors below.')
+        else:
+            form = UserGroupForm(instance=group)
+        
+        # Get all users except current user for member selection
+        available_users = QuantumUser.objects.exclude(id=request.user.id).order_by('username')
+        current_member_ids = list(group.members.values_list('id', flat=True))
+        
+        context = {
+            'form': form,
+            'group': group,
+            'available_users': available_users,
+            'current_member_ids': current_member_ids,
+        }
+        
+        return render(request, 'core/edit_group.html', context)
+        
+    except Exception as e:
+        logger.error(f"Failed to edit group {group_id} for user {request.user.email}: {e}")
+        messages.error(request, 'Failed to access group. Please try again.')
+        return redirect('manage_groups')
 
 
 @login_required

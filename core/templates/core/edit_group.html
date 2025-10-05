@@ -1,20 +1,20 @@
 {% extends 'core/base.html' %}
 
-{% block title %}Create Group{% endblock %}
+{% block title %}Edit Group{% endblock %}
 
 {% block content %}
 <div class="container py-4">
     <div class="row">
         <div class="col-12">
-            <!-- Create Group Header -->
+            <!-- Edit Group Header -->
             <div class="quantum-card mb-4">
                 <div class="card-header">
                     <div class="d-flex align-items-center justify-content-between">
                         <div>
                             <h4 class="mb-2 fw-bold">
-                                <i class="bi bi-plus-circle me-2 text-primary"></i>Create New Group
+                                <i class="bi bi-pencil me-2 text-primary"></i>Edit Group: {{ group.name }}
                             </h4>
-                            <p class="text-muted mb-0 fw-medium">Create a group to easily share files with the same people</p>
+                            <p class="text-muted mb-0 fw-medium">Update group details and manage members</p>
                         </div>
                         <div class="text-end">
                             <a href="{% url 'manage_groups' %}" class="btn btn-outline-secondary">
@@ -25,7 +25,7 @@
                 </div>
             </div>
 
-            <!-- Create Group Form -->
+            <!-- Edit Group Form -->
             <div class="row">
                 <!-- Group Details Section -->
                 <div class="col-lg-4">
@@ -36,7 +36,7 @@
                             </h5>
                         </div>
                         <div class="card-body">
-                            <form method="post" id="createGroupForm">
+                            <form method="post" id="editGroupForm">
                                 {% csrf_token %}
                                 
                                 <!-- Group Name -->
@@ -71,10 +71,10 @@
                                     {% endif %}
                                 </div>
 
-                                <!-- Submit Button -->
+                                <!-- Form Buttons -->
                                 <div class="d-grid gap-2">
                                     <button type="submit" class="btn btn-primary">
-                                        <i class="bi bi-check-circle me-1"></i>Create Group
+                                        <i class="bi bi-check-circle me-1"></i>Update Group
                                     </button>
                                     <a href="{% url 'manage_groups' %}" class="btn btn-outline-secondary">
                                         <i class="bi bi-x-circle me-1"></i>Cancel
@@ -90,10 +90,21 @@
                     <div class="quantum-card">
                         <div class="card-header">
                             <h5 class="mb-0 fw-bold">
-                                <i class="bi bi-people me-2 text-primary"></i>Select Members
+                                <i class="bi bi-people me-2 text-primary"></i>Manage Members
                             </h5>
                         </div>
                         <div class="card-body">
+                            <!-- Current member count info -->
+                            <div class="mb-3">
+                                <div class="alert alert-info d-flex align-items-center">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    <div>
+                                        This group currently has <strong>{{ group.get_member_count }}</strong> member{{ group.get_member_count|pluralize }}.
+                                        Select/deselect users below to update membership.
+                                    </div>
+                                </div>
+                            </div>
+                            
                             <!-- Search Box for Members -->
                             <div class="mb-3">
                                 <input type="text" class="form-control" id="memberSearch" placeholder="Search users by name or email...">
@@ -102,15 +113,19 @@
                             <!-- Member List -->
                             <div class="border rounded p-3" style="max-height: 400px; overflow-y: auto;">
                                 <div id="memberList">
-                                    {% for user in member_form.selected_users.field.queryset %}
+                                    {% for user in available_users %}
                                         <div class="form-check mb-2 user-option" data-search="{{ user.email|lower }} {{ user.get_full_name|default:user.username|lower }}">
-                                            <input class="form-check-input" type="checkbox" name="selected_users" value="{{ user.id }}" id="user_{{ user.id }}" form="createGroupForm">
+                                            <input class="form-check-input" type="checkbox" name="selected_members" value="{{ user.id }}" id="user_{{ user.id }}" form="editGroupForm"
+                                                   {% if user.id in current_member_ids %}checked{% endif %}>
                                             <label class="form-check-label d-flex align-items-center" for="user_{{ user.id }}">
                                                 <i class="bi bi-person-circle me-2 text-muted"></i>
                                                 <div>
                                                     <div class="fw-medium">{{ user.get_full_name|default:user.username }}</div>
                                                     <div class="text-muted small">{{ user.email }}</div>
                                                 </div>
+                                                {% if user.id in current_member_ids %}
+                                                    <span class="badge bg-success-subtle text-success ms-auto">Current Member</span>
+                                                {% endif %}
                                             </label>
                                         </div>
                                     {% empty %}
@@ -122,14 +137,8 @@
                             </div>
                             
                             <div class="form-text mt-3">
-                                Select users to add to this group. You can search by name or email above.
+                                Select users to add to this group. Deselect to remove members. You can search by name or email above.
                             </div>
-                            
-                            {% if member_form.selected_users.errors %}
-                                {% for error in member_form.selected_users.errors %}
-                                    <div class="text-danger small">{{ error }}</div>
-                                {% endfor %}
-                            {% endif %}
                         </div>
                     </div>
                 </div>

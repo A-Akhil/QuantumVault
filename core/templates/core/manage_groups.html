@@ -45,6 +45,12 @@
                                             </button>
                                             <ul class="dropdown-menu">
                                                 <li>
+                                                    <a href="{% url 'edit_group' group.id %}" class="dropdown-item">
+                                                        <i class="bi bi-pencil me-2"></i>Edit Group
+                                                    </a>
+                                                </li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li>
                                                     <form method="post" action="{% url 'delete_group' group.id %}" class="d-inline" 
                                                           onsubmit="return confirm('Are you sure you want to delete this group?')">
                                                         {% csrf_token %}

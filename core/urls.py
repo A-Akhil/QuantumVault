@@ -28,6 +28,7 @@ urlpatterns = [
     # Group management
     path('groups/', views.manage_groups_view, name='manage_groups'),
     path('groups/create/', views.create_group_view, name='create_group'),
+    path('groups/<int:group_id>/edit/', views.edit_group_view, name='edit_group'),
     path('groups/<int:group_id>/delete/', views.delete_group_view, name='delete_group'),
     
     # API endpoints for backend testing

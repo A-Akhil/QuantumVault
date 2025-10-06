@@ -1,0 +1,507 @@
+{% extends 'core/base.html' %}
+
+{% block title %}BB84 Sessions{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-12">
+            <!-- Page Header -->
+            <div class="quantum-card mb-4">
+                <div class="card-header">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <h4 class="mb-2 fw-bold">
+                                <i class="bi bi-activity me-2 text-primary"></i>BB84 Key Exchange Sessions
+                            </h4>
+                            <p class="text-muted mb-0 fw-medium">View and manage quantum key distribution sessions</p>
+                        </div>
+                        <div class="text-end">
+                            <a href="{% url 'key_exchange' %}" class="btn btn-primary quantum-btn me-2">
+                                <i class="bi bi-plus-circle me-1"></i>New Key Exchange
+                            </a>
+                            <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-left me-1"></i>Dashboard
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sent Sessions -->
+            <div class="quantum-card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-send me-2 text-primary"></i>Initiated Sessions (You as Sender)
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if sent_sessions %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Recipient</th>
+                                        <th>Status</th>
+                                        <th>QBER</th>
+                                        <th>Sifted Bits</th>
+                                        <th>File</th>
+                                        <th>Created</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for session in sent_sessions %}
+                                        <tr>
+                                            <td>
+                                                <strong>{{ session.receiver.get_full_name|default:session.receiver.username }}</strong>
+                                                <br>
+                                                <small class="text-muted">{{ session.receiver.email }}</small>
+                                            </td>
+                                            <td>
+                                                <span class="badge 
+                                                    {% if session.status == 'completed' %}bg-success
+                                                    {% elif session.status == 'failed' %}bg-danger
+                                                    {% elif session.status == 'pending' %}bg-warning text-dark
+                                                    {% else %}bg-info{% endif %}">
+                                                    {{ session.get_status_display }}
+                                                </span>
+                                                {% if session.eavesdropper_present %}
+                                                    <br><small class="text-warning"><i class="bi bi-eye-slash"></i> Eve Simulated</small>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if session.error_rate is not None %}
+                                                    <span class="{% if session.error_rate > 0.15 %}text-danger{% elif session.error_rate > 0.10 %}text-warning{% else %}text-success{% endif %}">
+                                                        {{ session.error_rate|floatformat:4 }}%
+                                                    </span>
+                                                {% else %}
+                                                    <span class="text-muted">N/A</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if session.sifted_key_length %}
+                                                    {{ session.sifted_key_length }} bits
+                                                {% else %}
+                                                    <span class="text-muted">N/A</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if session.file %}
+                                                    <a href="{% url 'manage_file_sharing' session.file.id %}">{{ session.file.filename }}</a>
+                                                {% else %}
+                                                    <span class="text-muted">Not used yet</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">{{ session.created_at|date:"M d, Y H:i" }}</small>
+                                                {% if session.is_expired %}
+                                                    <br><small class="text-danger">Expired</small>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if session.status == 'pending' %}
+                                                    <span class="text-muted small">Waiting for receiver...</span>
+                                                {% elif session.status in 'accepted,transmitting,sifting,checking' %}
+                                                    <button class="btn btn-sm btn-info" onclick="showTimeline('{{ session.session_id }}')">
+                                                        <i class="bi bi-hourglass-split"></i> View Progress
+                                                    </button>
+                                                {% elif session.can_proceed_to_upload %}
+                                                    <a href="{% url 'upload' %}" class="btn btn-sm btn-outline-primary">
+                                                        <i class="bi bi-cloud-upload"></i> Upload
+                                                    </a>
+                                                {% else %}
+                                                    <button class="btn btn-sm btn-outline-secondary" disabled>
+                                                        Unavailable
+                                                    </button>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+                            <p class="text-muted mt-3">No key exchange sessions initiated yet.</p>
+                            <a href="{% url 'key_exchange' %}" class="btn btn-primary quantum-btn">
+                                <i class="bi bi-plus-circle me-1"></i>Start First Key Exchange
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Received Sessions -->
+            <div class="quantum-card">
+                <div class="card-header">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-inbox me-2 text-success"></i>Received Sessions (You as Receiver)
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if received_sessions %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Sender</th>
+                                        <th>Status</th>
+                                        <th>QBER</th>
+                                        <th>Sifted Bits</th>
+                                        <th>File</th>
+                                        <th>Created</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for session in received_sessions %}
+                                        <tr>
+                                            <td>
+                                                <strong>{{ session.sender.get_full_name|default:session.sender.username }}</strong>
+                                                <br>
+                                                <small class="text-muted">{{ session.sender.email }}</small>
+                                            </td>
+                                            <td>
+                                                <span class="badge 
+                                                    {% if session.status == 'completed' %}bg-success
+                                                    {% elif session.status == 'failed' %}bg-danger
+                                                    {% elif session.status == 'pending' %}bg-warning text-dark
+                                                    {% else %}bg-info{% endif %}">
+                                                    {{ session.get_status_display }}
+                                                </span>
+                                                {% if session.eavesdropper_present %}
+                                                    <br><small class="text-warning"><i class="bi bi-eye-slash"></i> Eve Simulated</small>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if session.error_rate is not None %}
+                                                    <span class="{% if session.error_rate > 0.15 %}text-danger{% elif session.error_rate > 0.10 %}text-warning{% else %}text-success{% endif %}">
+                                                        {{ session.error_rate|floatformat:4 }}%
+                                                    </span>
+                                                {% else %}
+                                                    <span class="text-muted">N/A</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if session.sifted_key_length %}
+                                                    {{ session.sifted_key_length }} bits
+                                                {% else %}
+                                                    <span class="text-muted">N/A</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if session.file %}
+                                                    <a href="{% url 'download_file' session.file.id %}">{{ session.file.filename }}</a>
+                                                {% else %}
+                                                    <span class="text-muted">Pending file upload</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">{{ session.created_at|date:"M d, Y H:i" }}</small>
+                                                {% if session.is_expired %}
+                                                    <br><small class="text-danger">Expired</small>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if session.status == 'pending' and not session.receiver_accepted %}
+                                                    <form method="post" action="{% url 'accept_bb84_session' session.session_id %}" style="display: inline;">
+                                                        {% csrf_token %}
+                                                        <button type="submit" class="btn btn-sm btn-success">
+                                                            <i class="bi bi-check-circle"></i> Accept
+                                                        </button>
+                                                    </form>
+                                                {% elif session.status in 'accepted,transmitting,sifting,checking' %}
+                                                    <button class="btn btn-sm btn-info" onclick="showTimeline('{{ session.session_id }}')">
+                                                        <i class="bi bi-hourglass-split"></i> View Progress
+                                                    </button>
+                                                {% elif session.status == 'completed' %}
+                                                    <span class="text-success small">
+                                                        <i class="bi bi-check-circle-fill"></i> Key Established
+                                                    </span>
+                                                {% elif session.status == 'failed' %}
+                                                    <span class="text-danger small">
+                                                        <i class="bi bi-x-circle-fill"></i> Failed
+                                                    </span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+                            <p class="text-muted mt-3">No key exchange sessions received yet.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Timeline Progress Modal -->
+<div class="modal fade" id="timelineModal" tabindex="-1" aria-labelledby="timelineModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content quantum-card">
+            <div class="modal-header border-0">
+                <h5 class="modal-title fw-bold" id="timelineModalLabel">
+                    <i class="bi bi-activity me-2 text-primary"></i>BB84 Protocol Timeline
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Session Info -->
+                <div class="alert alert-info mb-3">
+                    <strong>Session ID:</strong> <span id="modal-session-id"></span>
+                </div>
+                
+                <!-- Current Phase -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-2">Current Phase:</h6>
+                    <div class="alert alert-secondary mb-2" id="current-phase-display">
+                        <i class="bi bi-hourglass-split me-2"></i><span id="modal-current-phase">Loading...</span>
+                    </div>
+                </div>
+                
+                <!-- Progress Bar -->
+                <div class="mb-4">
+                    <h6 class="fw-bold mb-2">Progress:</h6>
+                    <div class="progress" style="height: 30px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
+                             role="progressbar" 
+                             id="modal-progress-bar"
+                             style="width: 0%"
+                             aria-valuenow="0" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                            <span id="modal-progress-text">0%</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Timeline Visualization -->
+                <div class="mb-3">
+                    <h6 class="fw-bold mb-2">Protocol Timeline:</h6>
+                    <div id="timeline-phases">
+                        <!-- Phases will be populated here -->
+                    </div>
+                </div>
+                
+                <!-- Protocol Summary (shown after completion) -->
+                <div id="protocol-summary" style="display: none;">
+                    <h6 class="fw-bold mb-2">Protocol Summary:</h6>
+                    <div class="card">
+                        <div class="card-body">
+                            <dl class="row mb-0">
+                                <dt class="col-sm-4">Status:</dt>
+                                <dd class="col-sm-8" id="summary-status"></dd>
+                                
+                                <dt class="col-sm-4">Sifted Bits:</dt>
+                                <dd class="col-sm-8" id="summary-sifted-bits"></dd>
+                                
+                                <dt class="col-sm-4">Error Rate (QBER):</dt>
+                                <dd class="col-sm-8" id="summary-error-rate"></dd>
+                                
+                                <dt class="col-sm-4">Eavesdropper:</dt>
+                                <dd class="col-sm-8" id="summary-eavesdropper"></dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="refresh-timeline-btn" onclick="refreshTimeline()">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentSessionId = null;
+let timelineInterval = null;
+
+function showTimeline(sessionId) {
+    currentSessionId = sessionId;
+    document.getElementById('modal-session-id').textContent = sessionId;
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('timelineModal'));
+    modal.show();
+    
+    // Start polling
+    refreshTimeline();
+    timelineInterval = setInterval(refreshTimeline, 2000); // Poll every 2 seconds
+    
+    // Stop polling when modal closes
+    document.getElementById('timelineModal').addEventListener('hidden.bs.modal', function() {
+        if (timelineInterval) {
+            clearInterval(timelineInterval);
+            timelineInterval = null;
+        }
+    }, { once: true });
+}
+
+function refreshTimeline() {
+    if (!currentSessionId) return;
+    
+    fetch(`/key-exchange/status/${currentSessionId}/`)
+        .then(response => response.json())
+        .then(data => {
+            // Update current phase
+            const phaseDisplay = document.getElementById('modal-current-phase');
+            phaseDisplay.textContent = data.current_phase || 'Pending...';
+            
+            // Update progress bar
+            const progressBar = document.getElementById('modal-progress-bar');
+            const progressText = document.getElementById('modal-progress-text');
+            const progress = data.progress_percentage || 0;
+            
+            progressBar.style.width = progress + '%';
+            progressBar.setAttribute('aria-valuenow', progress);
+            progressText.textContent = progress + '%';
+            
+            // Update progress bar color based on status
+            progressBar.className = 'progress-bar progress-bar-striped';
+            if (data.status === 'completed') {
+                progressBar.classList.add('bg-success');
+                progressBar.classList.remove('progress-bar-animated');
+            } else if (data.status === 'failed') {
+                progressBar.classList.add('bg-danger');
+                progressBar.classList.remove('progress-bar-animated');
+            } else {
+                progressBar.classList.add('bg-primary', 'progress-bar-animated');
+            }
+            
+            // Render timeline phases
+            if (data.phase_timeline && data.phase_timeline.length > 0) {
+                renderTimeline(data.phase_timeline);
+            }
+            
+            // Show summary if completed/failed
+            if (data.status === 'completed' || data.status === 'failed') {
+                clearInterval(timelineInterval);
+                timelineInterval = null;
+                showProtocolSummary(data);
+                
+                // Reload page after 3 seconds to show updated status
+                setTimeout(() => location.reload(), 3000);
+            }
+        })
+        .catch(error => {
+            console.error('Error fetching timeline:', error);
+        });
+}
+
+function renderTimeline(timeline) {
+    const container = document.getElementById('timeline-phases');
+    container.innerHTML = '';
+    
+    const phaseIcons = {
+        'preparation': 'bi-gear',
+        'encoding': 'bi-code-square',
+        'transmission_start': 'bi-arrow-left-right',
+        'eavesdropper_active': 'bi-eye-slash text-warning',
+        'measurement': 'bi-rulers',
+        'basis_comparison': 'bi-arrow-repeat',
+        'sifting_complete': 'bi-funnel',
+        'error_estimation': 'bi-calculator',
+        'error_rate_computed': 'bi-speedometer2',
+        'eavesdropper_detected': 'bi-exclamation-triangle text-danger',
+        'privacy_amplification': 'bi-shield-lock',
+        'completed': 'bi-check-circle text-success'
+    };
+    
+    timeline.forEach((phase, index) => {
+        const phaseDiv = document.createElement('div');
+        phaseDiv.className = 'mb-2 p-2 border-start border-3 border-primary ps-3';
+        
+        const icon = phaseIcons[phase.phase] || 'bi-circle';
+        const timestamp = new Date(phase.timestamp).toLocaleTimeString();
+        
+        phaseDiv.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <i class="bi ${icon} me-2"></i>
+                    <strong>${formatPhaseName(phase.phase)}</strong>
+                </div>
+                <small class="text-muted">${timestamp}</small>
+            </div>
+            ${phase.sifted_bits ? `<small class="text-muted ms-4">Sifted: ${phase.sifted_bits} bits</small>` : ''}
+            ${phase.error_rate !== undefined ? `<small class="text-muted ms-4">QBER: ${(phase.error_rate * 100).toFixed(2)}%</small>` : ''}
+        `;
+        
+        container.appendChild(phaseDiv);
+    });
+}
+
+function formatPhaseName(phase) {
+    const names = {
+        'preparation': 'Phase 1: Quantum State Preparation',
+        'encoding': 'Phase 1: Encoding Quantum States',
+        'transmission_start': 'Phase 2: Quantum Transmission Started',
+        'eavesdropper_active': '⚠️ Eavesdropper Intercepting!',
+        'measurement': 'Phase 2: Receiver Measuring States',
+        'basis_comparison': 'Phase 3: Basis Comparison',
+        'sifting_complete': 'Phase 3: Key Sifting Complete',
+        'error_estimation': 'Phase 4: Error Rate Estimation',
+        'error_rate_computed': 'Phase 4: QBER Computed',
+        'eavesdropper_detected': '❌ EAVESDROPPING DETECTED!',
+        'privacy_amplification': 'Phase 5: Privacy Amplification',
+        'completed': '✅ Protocol Completed Successfully'
+    };
+    return names[phase] || phase.replace(/_/g, ' ').toUpperCase();
+}
+
+function showProtocolSummary(data) {
+    const summaryDiv = document.getElementById('protocol-summary');
+    summaryDiv.style.display = 'block';
+    
+    document.getElementById('summary-status').innerHTML = `<span class="badge bg-${data.status === 'completed' ? 'success' : 'danger'}">${data.status.toUpperCase()}</span>`;
+    document.getElementById('summary-sifted-bits').textContent = data.summary?.sifted_bits || 'N/A';
+    document.getElementById('summary-error-rate').textContent = data.summary?.error_rate || 'N/A';
+    document.getElementById('summary-eavesdropper').textContent = data.summary?.eavesdropper || 'None';
+}
+
+// Auto-refresh page to update session statuses
+setInterval(() => {
+    // Only reload if no modal is open
+    if (!document.querySelector('.modal.show')) {
+        location.reload();
+    }
+}, 10000); // Refresh every 10 seconds
+</script>
+
+<style>
+#timeline-phases {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.progress {
+    border-radius: 10px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.border-start {
+    border-left-width: 4px !important;
+}
+
+#timeline-phases > div {
+    background: rgba(248, 250, 252, 0.8);
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+#timeline-phases > div:hover {
+    background: rgba(59, 130, 246, 0.05);
+    transform: translateX(5px);
+}
+</style>
+{% endblock %}

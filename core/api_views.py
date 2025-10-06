@@ -16,12 +16,12 @@ import logging
 
 from .models import QuantumUser, EncryptedFile, FileAccess, AuditLog
 from .crypto_utils import (
-    generate_kyber768_keypair,
     generate_dilithium3_keypair,
     aes_encrypt_file,
     aes_decrypt_file,
-    wrap_aes_key_for_user,
-    unwrap_aes_key_for_user,
+    initiate_bb84_session,
+    wrap_aes_key_with_shared_secret,
+    unwrap_aes_key_with_shared_secret,
     create_file_metadata_for_signature,
     dilithium_sign,
     dilithium_verify,
@@ -69,13 +69,12 @@ def api_register(request):
                 'error': 'Email already exists'
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Generate quantum keys
-        logger.info(f"Generating quantum keys for user: {data['email']}")
-        kyber_public, kyber_private = generate_kyber768_keypair()
+        # Generate quantum keys (Dilithium only; BB84 sessions are established per file)
+        logger.info(f"Generating Dilithium keys for user: {data['email']}")
         dilithium_public, dilithium_private = generate_dilithium3_keypair()
         
         # Validate keys
-        if not validate_quantum_keys(kyber_public, kyber_private, dilithium_public, dilithium_private):
+        if not validate_quantum_keys(None, None, dilithium_public, dilithium_private):
             raise QuantumCryptoError("Generated keys failed validation")
         
         # Create user
@@ -85,8 +84,8 @@ def api_register(request):
             password=data['password'],
             first_name=data.get('first_name', ''),
             last_name=data.get('last_name', ''),
-            kyber_public_key=kyber_public,
-            kyber_private_key=kyber_private,
+            kyber_public_key=b"",
+            kyber_private_key=b"",
             dilithium_public_key=dilithium_public,
             dilithium_private_key=dilithium_private
         )
@@ -97,7 +96,7 @@ def api_register(request):
             action='register',
             details={
                 'username': user.username,
-                'kyber_key_size': len(kyber_public),
+                'bb84_shared_key_bytes': 32,
                 'dilithium_key_size': len(dilithium_public)
             },
             request=request,
@@ -110,7 +109,7 @@ def api_register(request):
             'username': user.username,
             'email': user.email,
             'quantum_keys_generated': True,
-            'kyber_public_key_size': len(kyber_public),
+            'bb84_shared_key_bytes': 32,
             'dilithium_public_key_size': len(dilithium_public)
         }, status=status.HTTP_201_CREATED)
         
@@ -286,17 +285,28 @@ def api_upload_file(request):
         all_recipients = list(set(all_recipients))
         
         for recipient_email in all_recipients:
-            recipient_user = QuantumUser.objects.get(email=recipient_email)
-            kyber_ct, key_nonce, wrapped_key = wrap_aes_key_for_user(
-                aes_key, recipient_user.kyber_public_key
+            try:
+                QuantumUser.objects.get(email=recipient_email)
+            except QuantumUser.DoesNotExist:
+                logger.error("Recipient user not found: %s", recipient_email)
+                continue
+
+            session_result = initiate_bb84_session()
+            shared_key = session_result['shared_key']
+            wrapped_key, key_nonce = wrap_aes_key_with_shared_secret(aes_key, shared_key)
+
+            encrypted_file.add_wrapped_key_for_user(
+                recipient_email,
+                wrapped_key,
+                key_nonce,
+                shared_key=shared_key,
+                session_info={
+                    'error_rate': session_result['error_rate'],
+                    'sifted_key_length': session_result['sifted_key_length'],
+                    'num_intercepted': session_result['num_intercepted'],
+                    'eavesdropper_present': session_result['eavesdropper_present'],
+                },
             )
-            encrypted_file.add_wrapped_key_for_user(recipient_email, wrapped_key, key_nonce)
-            
-            # Store Kyber ciphertext
-            encrypted_file.wrapped_keys[recipient_email + "_kyber_ct"] = {
-                'ciphertext': base64.b64encode(kyber_ct).decode('utf-8'),
-                'key_nonce': base64.b64encode(b"").decode('utf-8')
-            }
         
         # Sign metadata
         metadata = create_file_metadata_for_signature(
@@ -431,9 +441,8 @@ def api_download_file(request, file_id):
         
         # Get wrapped keys
         wrapped_key_data = encrypted_file.get_wrapped_key_for_user(request.user.email)
-        kyber_ct_data = encrypted_file.wrapped_keys.get(request.user.email + "_kyber_ct")
         
-        if not wrapped_key_data or not kyber_ct_data:
+        if not wrapped_key_data or 'shared_key' not in wrapped_key_data:
             return Response({
                 'error': 'Decryption key not available'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -443,12 +452,10 @@ def api_download_file(request, file_id):
             ciphertext = f.read()
         
         # Unwrap AES key
-        kyber_ciphertext = base64.b64decode(kyber_ct_data['ciphertext'])
-        aes_key = unwrap_aes_key_for_user(
-            kyber_ciphertext,
-            wrapped_key_data['key_nonce'],
+        aes_key = unwrap_aes_key_with_shared_secret(
             wrapped_key_data['ciphertext'],
-            request.user.kyber_private_key
+            wrapped_key_data['key_nonce'],
+            wrapped_key_data['shared_key'],
         )
         
         # Decrypt file
@@ -456,13 +463,17 @@ def api_download_file(request, file_id):
         
         # Verify signature
         # Get the original recipients (exclude uploader and kyber_ct entries)
-        all_recipients = [email for email in encrypted_file.get_recipient_emails() 
-                         if email != encrypted_file.uploaded_by.email and not email.endswith('_kyber_ct')]
+        original_recipients = encrypted_file.wrapped_keys.get('_original_recipients', [])
+        if not original_recipients:
+            original_recipients = [
+                email for email in encrypted_file.get_recipient_emails()
+                if email != encrypted_file.uploaded_by.email
+            ]
         
         metadata = create_file_metadata_for_signature(
             encrypted_file.original_filename,
             encrypted_file.file_size,
-            all_recipients,
+            original_recipients,
             encrypted_file.uploaded_by.email
         )
         

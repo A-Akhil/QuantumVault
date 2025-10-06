@@ -14,7 +14,7 @@
                 <h1 class="display-4 fw-bold text-primary mb-3">Quantum-Safe File Storage</h1>
                 <p class="lead text-muted mb-4">
                     Secure your files with cutting-edge post-quantum cryptography. 
-                    Upload, encrypt, and share files with confidence using Kyber768 and Dilithium3 algorithms.
+                    Upload, encrypt, and share files with confidence using BB84 quantum key distribution and Dilithium3 signatures.
                 </p>
                 
                 {% if not user.is_authenticated %}
@@ -50,7 +50,7 @@
                         <h5 class="fw-bold">Post-Quantum Security</h5>
                         <p class="text-muted small">
                             Protected against both classical and quantum computer attacks using 
-                            NIST-standardized Kyber768 and Dilithium3 algorithms.
+                            a BB84 quantum key distribution layer alongside Dilithium3 signatures.
                         </p>
                     </div>
                 </div>
@@ -65,7 +65,7 @@
                         <h5 class="fw-bold">Secure Sharing</h5>
                         <p class="text-muted small">
                             Share files securely with specific users through email-based access control 
-                            and quantum-safe key encapsulation.
+                            and BB84-negotiated shared secrets.
                         </p>
                     </div>
                 </div>
@@ -100,7 +100,7 @@
                         <h6 class="fw-bold text-primary">Encryption</h6>
                         <ul class="list-unstyled small">
                             <li><i class="bi bi-check text-success me-2"></i>AES-256-GCM for file content</li>
-                            <li><i class="bi bi-check text-success me-2"></i>Kyber768 for key encapsulation</li>
+                            <li><i class="bi bi-check text-success me-2"></i>BB84 quantum key distribution for shared secrets</li>
                             <li><i class="bi bi-check text-success me-2"></i>96-bit nonces for security</li>
                         </ul>
                     </div>

@@ -342,6 +342,11 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" href="{% url 'key_exchange' %}">
+                                <i class="bi bi-broadcast me-1"></i>Key Exchange
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" href="{% url 'upload' %}">
                                 <i class="bi bi-cloud-upload me-1"></i>Upload
                             </a>
@@ -424,13 +429,13 @@
                 <div class="col-md-6">
                     <h6 class="fw-bold">Quantum-Safe File Storage</h6>
                     <p class="small mb-0">
-                        Secured with post-quantum cryptography using Kyber768 and Dilithium3 algorithms.
+                        Secured with post-quantum cryptography using BB84 quantum key distribution and Dilithium3 signatures.
                     </p>
                 </div>
                 <div class="col-md-6 text-md-end">
                     <div class="d-flex justify-content-md-end gap-3">
                         <span class="badge security-badge">
-                            <i class="bi bi-shield-check me-1"></i>Kyber768
+                            <i class="bi bi-broadcast me-1"></i>BB84 QKD
                         </span>
                         <span class="badge security-badge">
                             <i class="bi bi-pen me-1"></i>Dilithium3

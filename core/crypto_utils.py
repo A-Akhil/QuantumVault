@@ -1,8 +1,8 @@
 """
-Quantum-safe cryptographic utilities for post-quantum file storage system.
+Quantum-safe cryptographic utilities for the post-quantum file storage system.
 
-This module provides utility functions for:
-- Kyber768 Key Encapsulation Mechanism (KEM)
+This module now focuses on:
+- BB84 Quantum Key Distribution (via `core.bb84_utils`)
 - Dilithium3 Digital Signatures
 - AES-256-GCM Authenticated Encryption
 """
@@ -12,6 +12,17 @@ import oqs
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from typing import Tuple, Dict, Any, Optional
 import logging
+
+from .bb84_utils import (
+    BB84Error,
+    EavesdroppingDetected,
+    TARGET_KEY_BYTES,
+    DEFAULT_KEY_LENGTH,
+    DEFAULT_SAMPLE_SIZE,
+    run_bb84_protocol,
+    wrap_aes_key_with_bb84_key,
+    unwrap_aes_key_with_bb84_key,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,29 +52,6 @@ class SignatureError(QuantumCryptoError):
     pass
 
 
-def generate_kyber768_keypair() -> Tuple[bytes, bytes]:
-    """
-    Generate a Kyber768 keypair for Key Encapsulation Mechanism.
-    
-    Returns:
-        Tuple[bytes, bytes]: (public_key, private_key)
-    
-    Raises:
-        KeyGenerationError: If key generation fails
-    """
-    try:
-        kem = oqs.KeyEncapsulation("Kyber768")
-        public_key = kem.generate_keypair()
-        private_key = kem.export_secret_key()
-        
-        logger.info(f"Generated Kyber768 keypair: pub_key={len(public_key)}B, priv_key={len(private_key)}B")
-        return public_key, private_key
-        
-    except Exception as e:
-        logger.error(f"Kyber768 key generation failed: {e}")
-        raise KeyGenerationError(f"Failed to generate Kyber768 keypair: {e}")
-
-
 def generate_dilithium3_keypair() -> Tuple[bytes, bytes]:
     """
     Generate a Dilithium3 keypair for Digital Signatures.
@@ -85,57 +73,6 @@ def generate_dilithium3_keypair() -> Tuple[bytes, bytes]:
     except Exception as e:
         logger.error(f"Dilithium3 key generation failed: {e}")
         raise KeyGenerationError(f"Failed to generate Dilithium3 keypair: {e}")
-
-
-def kyber_encapsulate(public_key: bytes) -> Tuple[bytes, bytes]:
-    """
-    Encapsulate a shared secret using Kyber768 public key.
-    
-    Args:
-        public_key: Kyber768 public key bytes
-    
-    Returns:
-        Tuple[bytes, bytes]: (ciphertext, shared_secret)
-    
-    Raises:
-        EncryptionError: If encapsulation fails
-    """
-    try:
-        kem = oqs.KeyEncapsulation("Kyber768")
-        ciphertext, shared_secret = kem.encap_secret(public_key)
-        
-        logger.debug(f"Kyber768 encapsulation: ciphertext={len(ciphertext)}B, secret={len(shared_secret)}B")
-        return ciphertext, shared_secret
-        
-    except Exception as e:
-        logger.error(f"Kyber768 encapsulation failed: {e}")
-        raise EncryptionError(f"Failed to encapsulate with Kyber768: {e}")
-
-
-def kyber_decapsulate(private_key: bytes, ciphertext: bytes) -> bytes:
-    """
-    Decapsulate shared secret using Kyber768 private key.
-    
-    Args:
-        private_key: Kyber768 private key bytes
-        ciphertext: Encapsulated ciphertext
-    
-    Returns:
-        bytes: Shared secret
-    
-    Raises:
-        DecryptionError: If decapsulation fails
-    """
-    try:
-        kem = oqs.KeyEncapsulation("Kyber768", private_key)
-        shared_secret = kem.decap_secret(ciphertext)
-        
-        logger.debug(f"Kyber768 decapsulation: secret={len(shared_secret)}B")
-        return shared_secret
-        
-    except Exception as e:
-        logger.error(f"Kyber768 decapsulation failed: {e}")
-        raise DecryptionError(f"Failed to decapsulate with Kyber768: {e}")
 
 
 def dilithium_sign(private_key: bytes, message: bytes) -> bytes:
@@ -249,69 +186,61 @@ def aes_decrypt_file(aes_key: bytes, nonce: bytes, ciphertext: bytes) -> bytes:
         raise DecryptionError(f"Failed to decrypt with AES-256-GCM: {e}")
 
 
-def wrap_aes_key_for_user(aes_key: bytes, user_kyber_public_key: bytes) -> Tuple[bytes, bytes, bytes]:
-    """
-    Wrap an AES key for a specific user using their Kyber768 public key.
-    
-    Args:
-        aes_key: AES-256 key to wrap
-        user_kyber_public_key: User's Kyber768 public key
-    
-    Returns:
-        Tuple[bytes, bytes, bytes]: (kyber_ciphertext, key_nonce, wrapped_aes_key)
-    
-    Raises:
-        EncryptionError: If key wrapping fails
-    """
+def initiate_bb84_session(
+    *,
+    key_length: int = 1024,
+    eavesdropper_present: bool = False,
+    eavesdrop_probability: float = 0.0,
+    error_threshold: float = 0.15,
+    sample_size: int = 50,
+) -> Dict[str, Any]:
+    """Run the BB84 protocol and return the session artefacts."""
+
     try:
-        # Encapsulate to get shared secret
-        kyber_ciphertext, shared_secret = kyber_encapsulate(user_kyber_public_key)
-        
-        # Use shared secret to encrypt the AES key
-        key_nonce = os.urandom(12)
-        key_aesgcm = AESGCM(shared_secret[:32])  # Use first 32 bytes as AES key
-        wrapped_aes_key = key_aesgcm.encrypt(key_nonce, aes_key, None)
-        
-        logger.debug(f"AES key wrapping: kyber_ct={len(kyber_ciphertext)}B, "
-                    f"wrapped_key={len(wrapped_aes_key)}B")
-        return kyber_ciphertext, key_nonce, wrapped_aes_key
-        
-    except Exception as e:
-        logger.error(f"AES key wrapping failed: {e}")
-        raise EncryptionError(f"Failed to wrap AES key: {e}")
+        result = run_bb84_protocol(
+            key_length=key_length,
+            eavesdropper_present=eavesdropper_present,
+            eavesdrop_probability=eavesdrop_probability,
+            error_threshold=error_threshold,
+            sample_size=sample_size,
+        )
+        return result
+    except (BB84Error, EavesdroppingDetected) as exc:
+        logger.error("BB84 session failed: %s", exc)
+        raise EncryptionError(f"BB84 session failed: {exc}") from exc
 
 
-def unwrap_aes_key_for_user(kyber_ciphertext: bytes, key_nonce: bytes, 
-                          wrapped_aes_key: bytes, user_kyber_private_key: bytes) -> bytes:
-    """
-    Unwrap an AES key for a specific user using their Kyber768 private key.
-    
-    Args:
-        kyber_ciphertext: Kyber768 ciphertext from encapsulation
-        key_nonce: Nonce used for AES key encryption
-        wrapped_aes_key: Encrypted AES key
-        user_kyber_private_key: User's Kyber768 private key
-    
-    Returns:
-        bytes: Unwrapped AES-256 key
-    
-    Raises:
-        DecryptionError: If key unwrapping fails
-    """
+def wrap_aes_key_with_shared_secret(aes_key: bytes, shared_secret: bytes) -> Tuple[bytes, bytes]:
+    """Wrap an AES key using a BB84-derived shared secret."""
+
+    if len(aes_key) != TARGET_KEY_BYTES:
+        raise ValueError("aes_key must be 32 bytes (AES-256)")
+
     try:
-        # Decapsulate to get shared secret
-        shared_secret = kyber_decapsulate(user_kyber_private_key, kyber_ciphertext)
-        
-        # Use shared secret to decrypt the AES key
-        key_aesgcm = AESGCM(shared_secret[:32])  # Use first 32 bytes as AES key
-        aes_key = key_aesgcm.decrypt(key_nonce, wrapped_aes_key, None)
-        
-        logger.debug(f"AES key unwrapping: wrapped_key={len(wrapped_aes_key)}B, aes_key={len(aes_key)}B")
+        wrapped_key, nonce = wrap_aes_key_with_bb84_key(aes_key, shared_secret)
+        logger.debug(
+            "AES key wrapped via BB84 shared secret: ciphertext=%dB", len(wrapped_key)
+        )
+        return wrapped_key, nonce
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Failed to wrap AES key with BB84 shared secret: %s", exc)
+        raise EncryptionError(f"Failed to wrap AES key with BB84 shared secret: {exc}") from exc
+
+
+def unwrap_aes_key_with_shared_secret(
+    wrapped_key: bytes,
+    nonce: bytes,
+    shared_secret: bytes,
+) -> bytes:
+    """Unwrap an AES key using a BB84-derived shared secret."""
+
+    try:
+        aes_key = unwrap_aes_key_with_bb84_key(wrapped_key, nonce, shared_secret)
+        logger.debug("AES key unwrapped via BB84 shared secret: key=%dB", len(aes_key))
         return aes_key
-        
-    except Exception as e:
-        logger.error(f"AES key unwrapping failed: {e}")
-        raise DecryptionError(f"Failed to unwrap AES key: {e}")
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Failed to unwrap AES key with BB84 shared secret: %s", exc)
+        raise DecryptionError(f"Failed to unwrap AES key with BB84 shared secret: {exc}") from exc
 
 
 def create_file_metadata_for_signature(filename: str, file_size: int, 
@@ -340,38 +269,42 @@ def create_file_metadata_for_signature(filename: str, file_size: int,
     return metadata_str.encode('utf-8')
 
 
-def validate_quantum_keys(kyber_public: bytes, kyber_private: bytes,
-                         dilithium_public: bytes, dilithium_private: bytes) -> bool:
+def validate_quantum_keys(
+    legacy_public: Optional[bytes],
+    legacy_private: Optional[bytes],
+    dilithium_public: bytes,
+    dilithium_private: bytes,
+) -> bool:
+    """Validate Dilithium credentials and ensure BB84 simulation succeeds.
+
+    The first two parameters are kept for backward compatibility with legacy
+    Kyber-based call sites; they are ignored but logged when provided.
     """
-    Validate that quantum cryptographic keys are well-formed and work together.
-    
-    Args:
-        kyber_public: Kyber768 public key
-        kyber_private: Kyber768 private key
-        dilithium_public: Dilithium3 public key
-        dilithium_private: Dilithium3 private key
-    
-    Returns:
-        bool: True if all keys are valid and functional
-    """
+
+    if legacy_public or legacy_private:
+        logger.warning(
+            "validate_quantum_keys called with legacy Kyber material; ignoring in BB84 mode"
+        )
+
     try:
-        # Test Kyber768 keypair
-        ciphertext, shared_secret1 = kyber_encapsulate(kyber_public)
-        shared_secret2 = kyber_decapsulate(kyber_private, ciphertext)
-        if shared_secret1 != shared_secret2:
-            logger.error("Kyber768 keypair validation failed: shared secrets don't match")
-            return False
-        
-        # Test Dilithium3 keypair
         test_message = b"test message for key validation"
         signature = dilithium_sign(dilithium_private, test_message)
         if not dilithium_verify(dilithium_public, test_message, signature):
             logger.error("Dilithium3 keypair validation failed: signature verification failed")
             return False
-        
-        logger.info("All quantum keys validated successfully")
+
+        session = initiate_bb84_session(
+            key_length=DEFAULT_KEY_LENGTH,
+            sample_size=DEFAULT_SAMPLE_SIZE,
+        )
+        shared_key = session.get("shared_key")
+        if not shared_key or len(shared_key) != TARGET_KEY_BYTES:
+            logger.error("BB84 session did not yield expected 256-bit shared key")
+            return False
+
+        logger.info("Dilithium keys verified and BB84 session produced a valid shared key")
         return True
-        
-    except Exception as e:
-        logger.error(f"Quantum key validation failed: {e}")
+
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Quantum material validation failed: %s", exc)
         return False

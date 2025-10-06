@@ -5,6 +5,7 @@ URL configuration for core app.
 from django.urls import path
 from . import views
 from . import api_views
+from . import eavesdropper_api
 
 urlpatterns = [
     # Authentication URLs
@@ -24,6 +25,13 @@ urlpatterns = [
     path('files/<int:file_id>/access/remove/', views.remove_file_access_view, name='remove_file_access'),
     path('files/<int:file_id>/delete/', views.delete_file_view, name='delete_file'),
     
+    # BB84 Quantum Key Exchange
+    path('key-exchange/', views.key_exchange_view, name='key_exchange'),
+    path('key-exchange/initiate/', views.initiate_key_exchange_view, name='initiate_key_exchange'),
+    path('key-exchange/sessions/', views.bb84_sessions_view, name='bb84_sessions'),
+    path('key-exchange/accept/<uuid:session_id>/', views.accept_bb84_session_view, name='accept_bb84_session'),
+    path('key-exchange/status/<uuid:session_id>/', views.bb84_session_status_view, name='bb84_session_status'),
+    
     # Audit and monitoring
     path('audit/', views.audit_logs_view, name='audit_logs'),
     
@@ -41,4 +49,10 @@ urlpatterns = [
     path('api/files/', api_views.api_list_files, name='api_list_files'),
     path('api/download/<int:file_id>/', api_views.api_download_file, name='api_download'),
     path('api/audit/', api_views.api_audit_logs, name='api_audit'),
+    
+    # Eavesdropper API endpoints (external injection)
+    path('api/eavesdropper/inject/', eavesdropper_api.inject_eavesdropper_api, name='api_inject_eavesdropper'),
+    path('api/eavesdropper/deactivate/', eavesdropper_api.deactivate_eavesdropper_api, name='api_deactivate_eavesdropper'),
+    path('api/eavesdropper/status/', eavesdropper_api.eavesdropper_status_api, name='api_eavesdropper_status'),
+    path('eavesdropper/dashboard/', eavesdropper_api.eavesdropper_dashboard_view, name='eavesdropper_dashboard'),
 ]

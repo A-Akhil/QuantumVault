@@ -1,0 +1,261 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Eavesdropper Dashboard{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row">
+        <div class="col-12">
+            <!-- Page Header -->
+            <div class="quantum-card mb-4" style="background: linear-gradient(135deg, rgba(220, 38, 38, 0.1), rgba(239, 68, 68, 0.1));">
+                <div class="card-header border-danger">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <h4 class="mb-2 fw-bold text-danger">
+                                <i class="bi bi-eye-slash me-2"></i>Eavesdropper Dashboard (Eve)
+                            </h4>
+                            <p class="text-muted mb-0 fw-medium">Monitor quantum key exchange interceptions (Educational Demo)</p>
+                        </div>
+                        <div class="text-end">
+                            <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+                                <i class="bi bi-arrow-left me-1"></i>Back
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Eavesdropper Status -->
+            <div class="quantum-card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-shield-exclamation me-2 text-warning"></i>Active Eavesdropper Status
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if active_eavesdropper %}
+                        <div class="alert alert-danger">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6 class="fw-bold"><i class="bi bi-exclamation-triangle me-2"></i>Eavesdropper Active</h6>
+                                    <dl class="row mb-0">
+                                        <dt class="col-sm-5">Eve ID:</dt>
+                                        <dd class="col-sm-7"><code>{{ active_eavesdropper.eavesdropper_id }}</code></dd>
+                                        
+                                        <dt class="col-sm-5">Injected By:</dt>
+                                        <dd class="col-sm-7">{{ active_eavesdropper.injected_by }}</dd>
+                                        
+                                        <dt class="col-sm-5">Intercept Probability:</dt>
+                                        <dd class="col-sm-7"><strong>{{ active_eavesdropper.intercept_probability|floatformat:2 }}</strong> ({{ active_eavesdropper.intercept_probability|floatformat:0|mul:100 }}%)</dd>
+                                        
+                                        <dt class="col-sm-5">Activated At:</dt>
+                                        <dd class="col-sm-7">{{ active_eavesdropper.activated_at|date:"M d, Y H:i:s" }}</dd>
+                                    </dl>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6 class="fw-bold"><i class="bi bi-bar-chart me-2"></i>Statistics</h6>
+                                    <dl class="row mb-0">
+                                        <dt class="col-sm-6">Sessions Intercepted:</dt>
+                                        <dd class="col-sm-6"><strong class="text-danger">{{ active_eavesdropper.sessions_intercepted }}</strong></dd>
+                                        
+                                        <dt class="col-sm-6">Qubits Intercepted:</dt>
+                                        <dd class="col-sm-6"><strong class="text-danger">{{ active_eavesdropper.total_qubits_intercepted }}</strong></dd>
+                                        
+                                        <dt class="col-sm-6">Times Detected:</dt>
+                                        <dd class="col-sm-6"><strong class="text-warning">{{ active_eavesdropper.detections_count }}</strong></dd>
+                                        
+                                        <dt class="col-sm-6">Detection Rate:</dt>
+                                        <dd class="col-sm-6">
+                                            {% if active_eavesdropper.sessions_intercepted > 0 %}
+                                                {{ active_eavesdropper.detections_count|div:active_eavesdropper.sessions_intercepted|floatformat:0|mul:100 }}%
+                                            {% else %}
+                                                N/A
+                                            {% endif %}
+                                        </dd>
+                                    </dl>
+                                </div>
+                            </div>
+                            <div class="mt-3 text-center">
+                                <button class="btn btn-warning" onclick="deactivateEavesdropper()">
+                                    <i class="bi bi-x-circle me-1"></i>Deactivate Eavesdropper
+                                </button>
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info text-center">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>No active eavesdropper.</strong> Use the API to inject an eavesdropper into the system.
+                            <div class="mt-3">
+                                <code>POST /api/eavesdropper/inject/</code>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Active/Transmitting Sessions -->
+            <div class="quantum-card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-broadcast me-2 text-primary"></i>Active Quantum Transmissions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if active_sessions %}
+                        <p class="text-muted"><i class="bi bi-info-circle me-1"></i>Sessions currently in progress (can be intercepted if eavesdropper active)</p>
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Sender → Receiver</th>
+                                        <th>Status</th>
+                                        <th>Current Phase</th>
+                                        <th>Progress</th>
+                                        <th>Intercepted</th>
+                                        <th>Started</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for session in active_sessions %}
+                                        <tr class="{% if session.eavesdropper_present %}table-danger{% endif %}">
+                                            <td>
+                                                <strong>{{ session.sender.email }}</strong>
+                                                <br><i class="bi bi-arrow-right text-muted"></i>
+                                                <strong>{{ session.receiver.email }}</strong>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-info">{{ session.get_status_display }}</span>
+                                            </td>
+                                            <td>
+                                                <small>{{ session.current_phase|default:"Pending..." }}</small>
+                                            </td>
+                                            <td>
+                                                <div class="progress" style="height: 20px; width: 100px;">
+                                                    <div class="progress-bar bg-primary" style="width: {{ session.progress_percentage }}%">
+                                                        {{ session.progress_percentage }}%
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                {% if session.eavesdropper_present %}
+                                                    <span class="badge bg-danger">
+                                                        <i class="bi bi-eye-slash"></i> YES
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-success">NO</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">{{ session.created_at|date:"H:i:s" }}</small>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="bi bi-broadcast-pin text-muted" style="font-size: 3rem;"></i>
+                            <p class="text-muted mt-3">No quantum transmissions currently active.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Recently Intercepted Sessions -->
+            <div class="quantum-card">
+                <div class="card-header">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-clock-history me-2 text-secondary"></i>Recent Interceptions
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if recent_intercepted %}
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Parties</th>
+                                        <th>Status</th>
+                                        <th>QBER</th>
+                                        <th>Detected?</th>
+                                        <th>Completed</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for session in recent_intercepted %}
+                                        <tr>
+                                            <td>
+                                                <small>{{ session.sender.email }} → {{ session.receiver.email }}</small>
+                                            </td>
+                                            <td>
+                                                <span class="badge {% if session.status == 'completed' %}bg-success{% else %}bg-danger{% endif %}">
+                                                    {{ session.status }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {% if session.error_rate %}
+                                                    <span class="{% if session.error_rate > 0.15 %}text-danger{% else %}text-success{% endif %}">
+                                                        {{ session.error_rate|floatformat:4 }}
+                                                    </span>
+                                                {% else %}
+                                                    N/A
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if session.error_rate and session.error_rate > 0.15 %}
+                                                    <span class="badge bg-warning">
+                                                        <i class="bi bi-exclamation-triangle"></i> DETECTED
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge bg-success">Undetected</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">{{ session.completed_at|date:"M d, H:i" }}</small>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="bi bi-inbox text-muted" style="font-size: 2rem;"></i>
+                            <p class="text-muted mt-2 mb-0">No interceptions yet.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+function deactivateEavesdropper() {
+    if (!confirm('Deactivate the active eavesdropper?')) return;
+    
+    fetch('/api/eavesdropper/deactivate/', {
+        method: 'POST',
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Eavesdropper deactivated successfully!');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.error || data.message));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to deactivate eavesdropper');
+    });
+}
+
+// Auto-refresh every 5 seconds
+setInterval(() => location.reload(), 5000);
+</script>
+
+{% endblock %}

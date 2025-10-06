@@ -18,15 +18,15 @@ import mimetypes
 import base64
 from typing import Optional
 
-from .models import QuantumUser, EncryptedFile, FileAccess, AuditLog, UserGroup
+from .models import QuantumUser, EncryptedFile, FileAccess, AuditLog, UserGroup, BB84Session, OnlineStatus
 from .forms import QuantumUserRegistrationForm, QuantumUserLoginForm, FileUploadForm, FileShareForm, UserGroupForm
 from .crypto_utils import (
-    generate_kyber768_keypair,
     generate_dilithium3_keypair,
     aes_encrypt_file,
     aes_decrypt_file,
-    wrap_aes_key_for_user,
-    unwrap_aes_key_for_user,
+    initiate_bb84_session,
+    wrap_aes_key_with_shared_secret,
+    unwrap_aes_key_with_shared_secret,
     create_file_metadata_for_signature,
     dilithium_sign,
     dilithium_verify,
@@ -54,16 +54,15 @@ def register_view(request):
                 # Generate post-quantum cryptographic keys
                 logger.info(f"Generating quantum keys for user: {user.email}")
                 
-                kyber_public, kyber_private = generate_kyber768_keypair()
                 dilithium_public, dilithium_private = generate_dilithium3_keypair()
                 
                 # Validate keys
-                if not validate_quantum_keys(kyber_public, kyber_private, dilithium_public, dilithium_private):
+                if not validate_quantum_keys(None, None, dilithium_public, dilithium_private):
                     raise QuantumCryptoError("Generated keys failed validation")
                 
                 # Store keys in user model
-                user.kyber_public_key = kyber_public
-                user.kyber_private_key = kyber_private
+                user.kyber_public_key = b""
+                user.kyber_private_key = b""
                 user.dilithium_public_key = dilithium_public
                 user.dilithium_private_key = dilithium_private
                 
@@ -76,7 +75,7 @@ def register_view(request):
                     action='register',
                     details={
                         'username': user.username,
-                        'kyber_key_size': len(kyber_public),
+                        'bb84_shared_key_bytes': 32,
                         'dilithium_key_size': len(dilithium_public)
                     },
                     request=request,
@@ -397,9 +396,11 @@ def shared_with_me_view(request):
 
 
 @login_required
+@login_required
 def upload_file_view(request):
     """
-    Multiple file upload with AES encryption and Kyber key wrapping.
+    Multiple file upload with AES encryption and BB84 key distribution.
+    Requires valid BB84 sessions with recipients before upload.
     """
     if request.method == 'POST':
         form = FileUploadForm(request.POST, request.FILES)
@@ -412,6 +413,39 @@ def upload_file_view(request):
         # Get multiple files from the 'files' input
         uploaded_files = request.FILES.getlist('files')
         
+        if not uploaded_files:
+            messages.error(request, "Please select at least one file to upload.")
+            return redirect('upload')
+        
+        if not recipients:
+            messages.error(request, "Please select at least one recipient.")
+            return redirect('upload')
+        
+        # *** NEW: Check for valid BB84 sessions with ALL recipients ***
+        missing_sessions = []
+        recipient_users = QuantumUser.objects.filter(email__in=recipients)
+        
+        for recipient in recipient_users:
+            # Check if there's a completed, unused BB84 session with this recipient
+            valid_session = BB84Session.objects.filter(
+                sender=request.user,
+                receiver=recipient,
+                status='completed',
+                file__isnull=True  # Not yet used for file
+            ).order_by('-created_at').first()
+            
+            if not valid_session or valid_session.is_expired():
+                missing_sessions.append(recipient.email)
+        
+        if missing_sessions:
+            messages.error(
+                request,
+                f"BB84 key exchange required! You must establish quantum sessions with: {', '.join(missing_sessions)}. "
+                "Please complete key exchange before uploading."
+            )
+            return redirect('key_exchange')
+        
+        # Proceed with upload if all sessions exist
         if uploaded_files and recipients:
             successful_uploads = []
             failed_uploads = []
@@ -451,26 +485,67 @@ def upload_file_view(request):
                     
                     encrypted_file.file_path = file_path
                     
-                    # Wrap AES key for each recipient (including uploader)
+                    # Wrap AES key for each recipient using existing BB84 sessions
                     all_recipients = recipients + [request.user.email]
                     all_recipients = list(set(all_recipients))  # Remove duplicates
+                    
+                    # Store BB84 sessions that will be linked after file save
+                    sessions_to_link = []
                     
                     for recipient_email in all_recipients:
                         try:
                             recipient_user = QuantumUser.objects.get(email=recipient_email)
-                            kyber_ct, key_nonce, wrapped_key = wrap_aes_key_for_user(
-                                aes_key, recipient_user.kyber_public_key
-                            )
-                            encrypted_file.add_wrapped_key_for_user(recipient_email, wrapped_key, key_nonce)
-                            
-                            # Store Kyber ciphertext separately for unwrapping
-                            encrypted_file.wrapped_keys[recipient_email + "_kyber_ct"] = {
-                                'ciphertext': base64.b64encode(kyber_ct).decode('utf-8'),
-                                'key_nonce': base64.b64encode(b"").decode('utf-8')  # Not used for Kyber CT
-                            }
-                            
                         except QuantumUser.DoesNotExist:
                             logger.error(f"Recipient user not found: {recipient_email}")
+                            continue
+
+                        try:
+                            # For uploader, create a new BB84 session on-the-fly
+                            if recipient_email == request.user.email:
+                                session_result = initiate_bb84_session()
+                                shared_key = session_result['shared_key']
+                                
+                                session_summary = {
+                                    'error_rate': session_result['error_rate'],
+                                    'sifted_key_length': session_result['sifted_key_length'],
+                                    'num_intercepted': session_result['num_intercepted'],
+                                    'eavesdropper_present': session_result['eavesdropper_present'],
+                                }
+                            else:
+                                # Use existing BB84 session
+                                bb84_session = BB84Session.objects.filter(
+                                    sender=request.user,
+                                    receiver=recipient_user,
+                                    status='completed',
+                                    file__isnull=True
+                                ).order_by('-created_at').first()
+                                
+                                if not bb84_session or bb84_session.is_expired():
+                                    logger.error(f"No valid BB84 session found for {recipient_email}")
+                                    continue
+                                
+                                shared_key = bb84_session.shared_key
+                                
+                                # Store session to link after file is saved
+                                sessions_to_link.append(bb84_session)
+                                
+                                session_summary = bb84_session.get_protocol_summary()
+                            
+                            # Wrap AES key with BB84-derived shared secret
+                            wrapped_key, key_nonce = wrap_aes_key_with_shared_secret(aes_key, shared_key)
+
+                            encrypted_file.add_wrapped_key_for_user(
+                                recipient_email,
+                                wrapped_key,
+                                key_nonce,
+                                shared_key=shared_key,
+                                session_info=session_summary,
+                            )
+
+                        except QuantumCryptoError as exc:
+                            logger.error(
+                                "Key wrapping failed for recipient %s: %s", recipient_email, exc
+                            )
                             continue
                     
                     # Create metadata for signature
@@ -490,6 +565,11 @@ def upload_file_view(request):
                     
                     # Save to database
                     encrypted_file.save()
+                    
+                    # NOW link BB84 sessions to the saved file
+                    for session in sessions_to_link:
+                        session.file = encrypted_file
+                        session.save()
                     
                     # Create access records
                     for recipient_email in recipients:
@@ -552,7 +632,20 @@ def upload_file_view(request):
                 messages.error(request, 'Please select at least one user to share the files with.')
     
     # GET request - show upload form
-    available_users = QuantumUser.objects.exclude(email=request.user.email).order_by('email')
+    # Only show users with whom the sender has completed BB84 sessions
+    completed_sessions = BB84Session.objects.filter(
+        sender=request.user,
+        status='completed'
+    ).select_related('receiver')
+    
+    # Extract unique receiver IDs from sessions
+    receiver_ids = completed_sessions.values_list('receiver_id', flat=True).distinct()
+    
+    # Filter available users to only those with completed sessions
+    available_users = QuantumUser.objects.filter(
+        id__in=receiver_ids
+    ).order_by('email')
+    
     user_groups = UserGroup.objects.filter(created_by=request.user).order_by('name')
     form = FileUploadForm()
     
@@ -589,10 +682,9 @@ def download_file_view(request, file_id):
         
         # Get wrapped key for this user
         wrapped_key_data = encrypted_file.get_wrapped_key_for_user(request.user.email)
-        kyber_ct_data = encrypted_file.wrapped_keys.get(request.user.email + "_kyber_ct")
         
-        if not wrapped_key_data or not kyber_ct_data:
-            logger.error(f"No wrapped key found for user {request.user.email} and file {file_id}")
+        if not wrapped_key_data or 'shared_key' not in wrapped_key_data:
+            logger.error(f"No BB84 shared key found for user {request.user.email} and file {file_id}")
             raise PermissionDenied("Decryption key not available.")
         
         # Read encrypted file
@@ -600,12 +692,10 @@ def download_file_view(request, file_id):
             ciphertext = f.read()
         
         # Unwrap AES key
-        kyber_ciphertext = base64.b64decode(kyber_ct_data['ciphertext'])
-        aes_key = unwrap_aes_key_for_user(
-            kyber_ciphertext,
-            wrapped_key_data['key_nonce'],
+        aes_key = unwrap_aes_key_with_shared_secret(
             wrapped_key_data['ciphertext'],
-            request.user.kyber_private_key
+            wrapped_key_data['key_nonce'],
+            wrapped_key_data['shared_key'],
         )
         
         # Decrypt file
@@ -760,7 +850,7 @@ def manage_file_sharing_view(request, file_id):
 def add_file_access_view(request, file_id):
     """
     Add access for a new user to a file.
-    Wraps AES key with the new user's Kyber public key.
+    Wraps AES key for the new user using a BB84-derived shared secret.
     """
     try:
         encrypted_file = get_object_or_404(EncryptedFile, id=file_id)
@@ -789,32 +879,36 @@ def add_file_access_view(request, file_id):
         
         # Get the original AES key by unwrapping it with owner's key
         owner_wrapped_key_data = encrypted_file.get_wrapped_key_for_user(request.user.email)
-        owner_kyber_ct_data = encrypted_file.wrapped_keys.get(request.user.email + "_kyber_ct")
         
-        if not owner_wrapped_key_data or not owner_kyber_ct_data:
+        if not owner_wrapped_key_data or 'shared_key' not in owner_wrapped_key_data:
             messages.error(request, "Cannot retrieve encryption key for this file.")
             return redirect('manage_file_sharing', file_id=file_id)
         
-        # Unwrap AES key using owner's Kyber private key
-        kyber_ciphertext = base64.b64decode(owner_kyber_ct_data['ciphertext'])
-        aes_key = unwrap_aes_key_for_user(
-            kyber_ciphertext,
-            owner_wrapped_key_data['key_nonce'],
+        # Unwrap AES key using owner's shared secret
+        aes_key = unwrap_aes_key_with_shared_secret(
             owner_wrapped_key_data['ciphertext'],
-            request.user.kyber_private_key
+            owner_wrapped_key_data['key_nonce'],
+            owner_wrapped_key_data['shared_key'],
         )
         
         # Wrap AES key for the new user
-        kyber_ct, key_nonce, wrapped_key = wrap_aes_key_for_user(
-            aes_key, new_user.kyber_public_key
-        )
+        session_result = initiate_bb84_session()
+        shared_key = session_result['shared_key']
+        wrapped_key, key_nonce = wrap_aes_key_with_shared_secret(aes_key, shared_key)
         
         # Add wrapped key to the file
-        encrypted_file.add_wrapped_key_for_user(new_user_email, wrapped_key, key_nonce)
-        encrypted_file.wrapped_keys[new_user_email + "_kyber_ct"] = {
-            'ciphertext': base64.b64encode(kyber_ct).decode('utf-8'),
-            'key_nonce': base64.b64encode(b"").decode('utf-8')
-        }
+        encrypted_file.add_wrapped_key_for_user(
+            new_user_email,
+            wrapped_key,
+            key_nonce,
+            shared_key=shared_key,
+            session_info={
+                'error_rate': session_result['error_rate'],
+                'sifted_key_length': session_result['sifted_key_length'],
+                'num_intercepted': session_result['num_intercepted'],
+                'eavesdropper_present': session_result['eavesdropper_present'],
+            },
+        )
         encrypted_file.save()
         
         # Create access record
@@ -896,7 +990,6 @@ def remove_file_access_view(request, file_id):
         # Remove wrapped keys from file
         if encrypted_file.wrapped_keys:
             encrypted_file.wrapped_keys.pop(remove_user_email, None)
-            encrypted_file.wrapped_keys.pop(remove_user_email + "_kyber_ct", None)
             encrypted_file.save()
         
         # Remove access record
@@ -1154,3 +1247,325 @@ def home_view(request):
     if request.user.is_authenticated:
         return redirect('dashboard')
     return render(request, 'core/home.html')
+
+
+@login_required
+def key_exchange_view(request):
+    """
+    Unified BB84 quantum key exchange page.
+    Shows:
+    - Available recipients for new key exchange
+    - Sent sessions (initiated by you)
+    - Received sessions (pending your acceptance)
+    """
+    # Get or create online status for current user
+    online_status, created = OnlineStatus.objects.get_or_create(user=request.user)
+    online_status.update_heartbeat()
+    
+    # Get all users except current user
+    available_users = QuantumUser.objects.exclude(id=request.user.id).order_by('email')
+    
+    # Ensure all users have online status records
+    for user in available_users:
+        OnlineStatus.objects.get_or_create(user=user)
+    
+    # Refresh to get online status for all
+    available_users = QuantumUser.objects.exclude(id=request.user.id).select_related('online_status').order_by('email')
+    
+    # Get sessions where user is sender
+    sent_sessions = BB84Session.objects.filter(
+        sender=request.user
+    ).select_related('receiver', 'file').order_by('-created_at')
+    
+    # Get sessions where user is receiver
+    received_sessions = BB84Session.objects.filter(
+        receiver=request.user
+    ).select_related('sender', 'file').order_by('-created_at')
+    
+    context = {
+        'available_users': available_users,
+        'sent_sessions': sent_sessions,
+        'received_sessions': received_sessions,
+    }
+    
+    return render(request, 'core/key_exchange.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def initiate_key_exchange_view(request):
+    """
+    Initiate BB84 key exchange REQUEST with selected recipients.
+    Creates PENDING sessions that require receiver acceptance.
+    BB84 protocol runs ONLY after receiver accepts.
+    """
+    recipient_emails = request.POST.getlist('recipients')
+    
+    if not recipient_emails:
+        messages.error(request, "Please select at least one recipient for key exchange.")
+        return redirect('key_exchange')
+    
+    # Validate recipients exist and are not the sender
+    recipients = QuantumUser.objects.filter(email__in=recipient_emails).exclude(id=request.user.id)
+    
+    if len(recipients) != len(recipient_emails):
+        messages.error(request, "Some selected recipients are invalid.")
+        return redirect('key_exchange')
+    
+    # Check if recipients are online (optional warning)
+    offline_recipients = []
+    for recipient in recipients:
+        online_status = getattr(recipient, 'online_status', None)
+        if not online_status or not online_status.check_online_status():
+            offline_recipients.append(recipient.email)
+    
+    if offline_recipients:
+        messages.warning(
+            request,
+            f"Note: Some recipients are offline: {', '.join(offline_recipients)}. "
+            "They must come online to accept the key exchange request."
+        )
+    
+    # Create PENDING BB84 sessions for each recipient (NO BB84 protocol run yet)
+    created_sessions = []
+    
+    for recipient in recipients:
+        # Check if there's already a pending or completed session with this recipient
+        existing_session = BB84Session.objects.filter(
+            sender=request.user,
+            receiver=recipient,
+            status__in=['pending', 'completed'],
+            file__isnull=True  # Not yet used for file upload
+        ).order_by('-created_at').first()
+        
+        if existing_session:
+            if existing_session.status == 'pending':
+                logger.info(f"Pending session already exists: {existing_session.session_id} for {recipient.email}")
+                created_sessions.append(existing_session)
+                continue
+            elif existing_session.status == 'completed' and not existing_session.is_expired():
+                logger.info(f"Reusing existing completed session {existing_session.session_id} for {recipient.email}")
+                created_sessions.append(existing_session)
+                continue
+        
+        # Create NEW pending session (awaiting receiver acceptance)
+        logger.info(f"Creating pending BB84 session request: {request.user.username} → {recipient.username}")
+        
+        session = BB84Session.objects.create(
+            sender=request.user,
+            receiver=recipient,
+            status='pending',  # Waiting for receiver to accept
+            receiver_accepted=False,
+            progress_percentage=0
+        )
+        
+        created_sessions.append(session)
+        
+        # Log session creation
+        AuditLog.log_action(
+            user_email=request.user.email,
+            action='bb84_session_initiated',
+            details={
+                'recipient': recipient.email,
+                'session_id': str(session.session_id),
+                'status': 'pending_receiver_acceptance'
+            },
+            request=request,
+            success=True
+        )
+        
+        # TODO: Send email/notification to receiver about pending request
+    
+    # Show results to user
+    if created_sessions:
+        messages.success(
+            request,
+            f"BB84 key exchange request sent to {len(created_sessions)} recipient(s). "
+            "Waiting for them to accept before quantum key exchange begins."
+        )
+    
+    # Redirect to sessions view
+    return redirect('bb84_sessions')
+
+
+@login_required
+def bb84_sessions_view(request):
+    """
+    View all BB84 sessions (sent and received).
+    """
+    # Update current user's heartbeat
+    online_status, _ = OnlineStatus.objects.get_or_create(user=request.user)
+    online_status.update_heartbeat()
+    
+    # Get sessions where user is sender
+    sent_sessions = BB84Session.objects.filter(
+        sender=request.user
+    ).select_related('receiver', 'file').order_by('-created_at')
+    
+    # Get sessions where user is receiver
+    received_sessions = BB84Session.objects.filter(
+        receiver=request.user
+    ).select_related('sender', 'file').order_by('-created_at')
+    
+    context = {
+        'sent_sessions': sent_sessions,
+        'received_sessions': received_sessions,
+    }
+    
+    return render(request, 'core/bb84_sessions.html', context)
+
+
+@login_required
+def accept_bb84_session_view(request, session_id):
+    """
+    Receiver accepts a pending BB84 session and triggers the actual quantum key exchange.
+    BB84 protocol runs with 10+ second timeline for educational visualization.
+    """
+    from .bb84_utils import run_bb84_protocol_with_timeline
+    from .models import ActiveEavesdropper
+    import threading
+    
+    session = get_object_or_404(BB84Session, session_id=session_id, receiver=request.user)
+    
+    if session.status != 'pending':
+        messages.warning(request, "This session is no longer pending.")
+        return redirect('bb84_sessions')
+    
+    # Mark as accepted by receiver
+    session.receiver_accepted = True
+    session.accepted_at = timezone.now()
+    session.status = 'accepted'
+    session.current_phase = 'Preparing quantum channel...'
+    session.progress_percentage = 5
+    session.save()
+    
+    messages.success(
+        request,
+        f"Accepted key exchange from {session.sender.username}. "
+        "BB84 quantum protocol starting now (10-15 seconds)..."
+    )
+    
+    # Check if there's an active eavesdropper in the system
+    active_eve = ActiveEavesdropper.get_active()
+    simulate_eve = active_eve is not None
+    eve_probability = active_eve.intercept_probability if simulate_eve else 0.0
+    eve_injector = active_eve.injected_by if simulate_eve else None
+    
+    # Run BB84 protocol in background thread (with 10+ second timeline)
+    def run_bb84_async():
+        try:
+            logger.info(
+                f"Starting BB84 protocol with timeline: {session.sender.username} → {session.receiver.username}"
+                f"{' [EAVESDROPPER ACTIVE]' if simulate_eve else ''}"
+            )
+            
+            # This function will take 10-15 seconds and update session.current_phase as it goes
+            bb84_result = run_bb84_protocol_with_timeline(
+                session=session,
+                eavesdropper_present=simulate_eve,
+                eavesdrop_probability=eve_probability
+            )
+            
+            # Update session with final results
+            session.status = 'completed'
+            session.sender_bits = bb84_result['sender_bits']
+            session.sender_bases = bb84_result['sender_bases']
+            session.receiver_bases = bb84_result['receiver_bases']
+            session.receiver_measurements = bb84_result['receiver_measurements']
+            session.matched_indices = bb84_result['matched_indices']
+            session.sifted_key_length = bb84_result['sifted_key_length']
+            session.error_rate = bb84_result['error_rate']
+            session.sampled_indices = bb84_result.get('sampled_indices', [])
+            session.shared_key = bb84_result['shared_key']
+            session.eavesdropper_present = simulate_eve
+            session.eavesdrop_probability = eve_probability
+            session.num_intercepted = bb84_result.get('num_intercepted', 0)
+            session.eavesdropper_injected_by = eve_injector
+            session.current_phase = 'Completed - Shared key established'
+            session.progress_percentage = 100
+            session.completed_at = timezone.now()
+            session.save()
+            
+            # Update eavesdropper statistics if Eve was active
+            if simulate_eve and active_eve:
+                active_eve.sessions_intercepted += 1
+                active_eve.total_qubits_intercepted += bb84_result.get('num_intercepted', 0)
+                if bb84_result['error_rate'] > 0.15:  # Detection threshold
+                    active_eve.detections_count += 1
+                active_eve.save()
+            
+            # Log successful completion
+            AuditLog.log_action(
+                user_email=session.receiver.email,
+                action='bb84_protocol_completed',
+                details={
+                    'sender': session.sender.email,
+                    'session_id': str(session.session_id),
+                    'error_rate': bb84_result['error_rate'],
+                    'sifted_bits': bb84_result['sifted_key_length'],
+                    'eavesdropper_active': simulate_eve,
+                    'eavesdropper_detected': bb84_result['error_rate'] > 0.15
+                },
+                request=None,  # Background thread
+                success=True
+            )
+            
+            # Send webhook notification if eavesdropping detected
+            if simulate_eve and bb84_result['error_rate'] > 0.15:
+                from .webhooks import send_eavesdropper_detection_webhook
+                send_eavesdropper_detection_webhook(session, bb84_result)
+            
+        except Exception as e:
+            logger.error(f"BB84 protocol failed: {e}")
+            session.status = 'failed'
+            session.current_phase = f'Failed: {str(e)}'
+            session.progress_percentage = 0
+            session.save()
+            
+            AuditLog.log_action(
+                user_email=session.receiver.email,
+                action='bb84_protocol_failed',
+                details={
+                    'sender': session.sender.email,
+                    'session_id': str(session.session_id),
+                    'error': str(e)
+                },
+                request=None,
+                success=False,
+                error_message=str(e)
+            )
+    
+    # Start BB84 in background
+    thread = threading.Thread(target=run_bb84_async, daemon=True)
+    thread.start()
+    
+    # Redirect to sessions page where user can watch progress
+    return redirect('bb84_sessions')
+
+
+@login_required
+def bb84_session_status_view(request, session_id):
+    """
+    Get BB84 session status as JSON (for AJAX polling with real-time timeline).
+    """
+    session = get_object_or_404(
+        BB84Session,
+        session_id=session_id
+    )
+    
+    # Check authorization
+    if request.user != session.sender and request.user != session.receiver:
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+    
+    summary = session.get_protocol_summary()
+    
+    return JsonResponse({
+        'session_id': str(session.session_id),
+        'status': session.status,
+        'current_phase': session.current_phase,
+        'progress_percentage': session.progress_percentage,
+        'phase_timeline': session.phase_timeline or [],
+        'summary': summary,
+        'can_proceed': session.can_proceed_to_upload()
+    })
+

@@ -78,8 +78,7 @@
                                             <div>
                                                 <h6 class="fw-bold mb-2 text-primary">Quantum-Safe Security</h6>
                                                 <p class="small mb-0 text-secondary">
-                                                    Your files will be encrypted with AES-256-GCM and keys will be protected using 
-                                                    Kyber768 post-quantum cryptography. Only you and the selected recipients will be able to decrypt and access the files.
+                                                    Your files are secured with AES-256-GCM, and each recipient's decryption material is negotiated through our BB84 quantum key distribution workflow. Only you and the selected recipients can decrypt the resulting files.
                                                 </p>
                                             </div>
                                         </div>
@@ -147,16 +146,35 @@
                                 
                                 <!-- Individual User Selection -->
                                 <select class="form-select" id="user_select" name="recipients" multiple size="8">
-                                    <option value="" disabled class="text-muted">Choose users to share with...</option>
-                                    {% for user in available_users %}
-                                        <option value="{{ user.email }}" data-search="{{ user.email|lower }} {{ user.get_full_name|default:user.username|lower }}">
-                                            {{ user.email }} ({{ user.get_full_name|default:user.username }})
-                                        </option>
-                                    {% endfor %}
+                                    {% if available_users %}
+                                        <option value="" disabled class="text-muted">Choose users to share with...</option>
+                                        {% for user in available_users %}
+                                            <option value="{{ user.email }}" data-search="{{ user.email|lower }} {{ user.get_full_name|default:user.username|lower }}">
+                                                {{ user.email }} ({{ user.get_full_name|default:user.username }})
+                                            </option>
+                                        {% endfor %}
+                                    {% else %}
+                                        <option value="" disabled class="text-muted">No users available - complete key exchange first</option>
+                                    {% endif %}
                                 </select>
-                                <div class="form-text text-muted">
-                                    Hold Ctrl/Cmd to select multiple users. The file will be encrypted for each selected user.
-                                </div>
+                                {% if available_users %}
+                                    <div class="form-text text-muted">
+                                        Hold Ctrl/Cmd to select multiple users. The file will be encrypted for each selected user.
+                                    </div>
+                                {% else %}
+                                    <div class="alert alert-info mt-3 mb-0" role="alert">
+                                        <div class="d-flex align-items-start">
+                                            <i class="bi bi-info-circle me-2 mt-1"></i>
+                                            <div>
+                                                <strong>No Recipients Available</strong>
+                                                <p class="mb-2 small">You must complete BB84 quantum key exchange with users before sharing files with them.</p>
+                                                <a href="{% url 'key_exchange' %}" class="btn btn-sm btn-primary">
+                                                    <i class="bi bi-broadcast me-1"></i>Start Key Exchange
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endif %}
                             </div>
                             
                             <!-- Action Buttons -->

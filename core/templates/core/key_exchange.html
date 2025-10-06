@@ -99,7 +99,7 @@
                                                 </button>
                                             {% elif session.status == 'completed' %}
                                                 <span class="text-success small">
-                                                    <i class="bi bi-check-circle-fill"></i> Key Established
+                                                    <i class="bi bi-arrow-left-right"></i> Ready (Bidirectional)
                                                 </span>
                                             {% elif session.status == 'failed' %}
                                                 <span class="text-danger small">
@@ -154,7 +154,7 @@
                                                 {{ session.get_status_display }}
                                             </span>
                                             {% if session.status == 'pending' and not session.receiver_accepted %}
-                                                <br><small class="text-muted"><i class="bi bi-hourglass"></i> Awaiting receiver</small>
+                                                <br><small class="text-muted"><i class="bi bi-hourglass"></i> Awaiting acceptance</small>
                                             {% endif %}
                                             {% if session.eavesdropper_present %}
                                                 <br><small class="text-danger"><i class="bi bi-eye-slash"></i> Eavesdropper Detected</small>
@@ -186,11 +186,11 @@
                                                 </button>
                                             {% elif session.status == 'pending' %}
                                                 <span class="text-warning small">
-                                                    <i class="bi bi-clock"></i> Waiting for {{ session.receiver.username }}
+                                                    <i class="bi bi-clock"></i> Awaiting {{ session.receiver.username }}
                                                 </span>
                                             {% elif session.status == 'completed' %}
                                                 <span class="text-success small">
-                                                    <i class="bi bi-check-circle-fill"></i> Key Established
+                                                    <i class="bi bi-arrow-left-right"></i> Ready (Bidirectional)
                                                 </span>
                                             {% elif session.status == 'failed' %}
                                                 <span class="text-danger small">
@@ -286,7 +286,7 @@
                                 
                                 <div class="alert alert-info mt-3 mb-0">
                                     <i class="bi bi-info-circle me-2"></i>
-                                    <strong>Note:</strong> Recipients must accept your request before BB84 quantum key exchange begins. The protocol will take 10-15 seconds to complete.
+                                    <strong>Note:</strong> Once established, quantum keys are permanent and work bidirectionally. Both users can securely exchange files indefinitely.
                                 </div>
                             </form>
                         </div>

@@ -12,6 +12,7 @@ from django.core.paginator import Paginator
 from django.conf import settings
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
+from django.db.models import Q
 import os
 import logging
 import mimetypes
@@ -421,20 +422,23 @@ def upload_file_view(request):
             messages.error(request, "Please select at least one recipient.")
             return redirect('upload')
         
-        # *** NEW: Check for valid BB84 sessions with ALL recipients ***
+        # *** Check for valid BB84 sessions with ALL recipients ***
+        # Sessions are BIDIRECTIONAL and PERMANENT - can be reused
         missing_sessions = []
         recipient_users = QuantumUser.objects.filter(email__in=recipients)
         
         for recipient in recipient_users:
-            # Check if there's a completed, unused BB84 session with this recipient
+            # Check if there's a completed BB84 session (bidirectional)
+            # Can be sender→receiver OR receiver→sender
             valid_session = BB84Session.objects.filter(
-                sender=request.user,
-                receiver=recipient,
-                status='completed',
-                file__isnull=True  # Not yet used for file
+                Q(sender=request.user, receiver=recipient) |
+                Q(sender=recipient, receiver=request.user),
+                status='completed'
+                # Removed file__isnull - keys are reusable
+                # Removed expiration check - keys are permanent
             ).order_by('-created_at').first()
             
-            if not valid_session or valid_session.is_expired():
+            if not valid_session:
                 missing_sessions.append(recipient.email)
         
         if missing_sessions:
@@ -512,21 +516,23 @@ def upload_file_view(request):
                                     'eavesdropper_present': session_result['eavesdropper_present'],
                                 }
                             else:
-                                # Use existing BB84 session
+                                # Use existing BB84 session (bidirectional + reusable)
                                 bb84_session = BB84Session.objects.filter(
-                                    sender=request.user,
-                                    receiver=recipient_user,
-                                    status='completed',
-                                    file__isnull=True
+                                    Q(sender=request.user, receiver=recipient_user) |
+                                    Q(sender=recipient_user, receiver=request.user),
+                                    status='completed'
+                                    # Removed file__isnull - keys are reusable
+                                    # Removed expiration check - keys are permanent
                                 ).order_by('-created_at').first()
                                 
-                                if not bb84_session or bb84_session.is_expired():
+                                if not bb84_session:
                                     logger.error(f"No valid BB84 session found for {recipient_email}")
                                     continue
                                 
                                 shared_key = bb84_session.shared_key
                                 
-                                # Store session to link after file is saved
+                                # Store session to link after file is saved (optional now)
+                                # Multiple files can use the same session
                                 sessions_to_link.append(bb84_session)
                                 
                                 session_summary = bb84_session.get_protocol_summary()
@@ -632,18 +638,23 @@ def upload_file_view(request):
                 messages.error(request, 'Please select at least one user to share the files with.')
     
     # GET request - show upload form
-    # Only show users with whom the sender has completed BB84 sessions
+    # Only show users with whom the sender has completed BB84 sessions (bidirectional)
     completed_sessions = BB84Session.objects.filter(
-        sender=request.user,
+        Q(sender=request.user) | Q(receiver=request.user),
         status='completed'
-    ).select_related('receiver')
+    ).select_related('sender', 'receiver')
     
-    # Extract unique receiver IDs from sessions
-    receiver_ids = completed_sessions.values_list('receiver_id', flat=True).distinct()
+    # Extract unique user IDs from sessions (excluding current user)
+    user_ids = set()
+    for session in completed_sessions:
+        if session.sender == request.user:
+            user_ids.add(session.receiver_id)
+        else:
+            user_ids.add(session.sender_id)
     
     # Filter available users to only those with completed sessions
     available_users = QuantumUser.objects.filter(
-        id__in=receiver_ids
+        id__in=user_ids
     ).order_by('email')
     
     user_groups = UserGroup.objects.filter(created_by=request.user).order_by('name')

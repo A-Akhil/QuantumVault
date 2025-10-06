@@ -475,7 +475,7 @@ class BB84Session(models.Model):
     expires_at = models.DateTimeField(
         null=True,
         blank=True,
-        help_text="Session expiration time (15 minutes from creation)"
+        help_text="Session expiration - DISABLED (permanent keys)"
     )
 
     class Meta:
@@ -491,9 +491,9 @@ class BB84Session(models.Model):
         return f"BB84 Session {self.session_id} ({self.sender.username} → {self.receiver.username}): {self.status}"
 
     def save(self, *args, **kwargs):
-        # Set expiration time on creation (15 minutes)
-        if not self.pk and not self.expires_at:
-            self.expires_at = timezone.now() + timedelta(minutes=15)
+        # DISABLED: Permanent keys never expire
+        # if not self.pk and not self.expires_at:
+        #     self.expires_at = timezone.now() + timedelta(minutes=15)
         
         # Set completion timestamp when status changes to completed
         if self.status == 'completed' and not self.completed_at:
@@ -502,17 +502,15 @@ class BB84Session(models.Model):
         super().save(*args, **kwargs)
 
     def is_expired(self):
-        """Check if session has expired"""
-        if self.expires_at:
-            return timezone.now() > self.expires_at
-        return False
+        """Check if session has expired - ALWAYS FALSE (permanent keys)"""
+        return False  # Permanent keys never expire
 
     def can_proceed_to_upload(self):
         """Check if this session can be used for file upload"""
         return (
             self.status == 'completed' and
-            self.shared_key is not None and
-            not self.is_expired()
+            self.shared_key is not None
+            # Removed expiration check - permanent keys
         )
 
     def get_protocol_summary(self):

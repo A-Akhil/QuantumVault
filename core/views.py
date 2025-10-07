@@ -406,6 +406,19 @@ def upload_file_view(request):
     if request.method == 'POST':
         form = FileUploadForm(request.POST, request.FILES)
         
+        # NEW: Detect if uploading to a group
+        selected_group_id = request.POST.get('group')
+        selected_group = None
+        context_type = 'personal'
+        
+        if selected_group_id:
+            try:
+                selected_group = UserGroup.objects.get(id=selected_group_id, created_by=request.user)
+                context_type = 'group'
+            except UserGroup.DoesNotExist:
+                messages.error(request, "Selected group not found.")
+                return redirect('upload')
+        
         # Get recipients from the new multi-select format
         selected_recipients = request.POST.getlist('recipients')
         # Filter out empty values and the current user's email
@@ -424,30 +437,52 @@ def upload_file_view(request):
         
         # *** Check for valid BB84 sessions with ALL recipients ***
         # Sessions are BIDIRECTIONAL and PERMANENT - can be reused
+        # NEW: Context-aware validation (personal vs group)
         missing_sessions = []
         recipient_users = QuantumUser.objects.filter(email__in=recipients)
         
         for recipient in recipient_users:
             # Check if there's a completed BB84 session (bidirectional)
             # Can be sender→receiver OR receiver→sender
-            valid_session = BB84Session.objects.filter(
-                Q(sender=request.user, receiver=recipient) |
-                Q(sender=recipient, receiver=request.user),
-                status='completed'
-                # Removed file__isnull - keys are reusable
-                # Removed expiration check - keys are permanent
-            ).order_by('-created_at').first()
+            # CONTEXT-AWARE: Check for appropriate context type
+            session_filter = Q(
+                (Q(sender=request.user, receiver=recipient) |
+                 Q(sender=recipient, receiver=request.user)),
+                status='completed',
+                context_type=context_type
+            )
+            
+            # For group context, also match the specific group
+            if context_type == 'group' and selected_group:
+                session_filter &= Q(group=selected_group)
+            else:
+                # For personal context, ensure group is NULL
+                session_filter &= Q(group__isnull=True)
+            
+            valid_session = BB84Session.objects.filter(session_filter).order_by('-created_at').first()
             
             if not valid_session:
-                missing_sessions.append(recipient.email)
+                if context_type == 'group':
+                    missing_sessions.append(f"{recipient.email} (group: {selected_group.name})")
+                else:
+                    missing_sessions.append(recipient.email)
         
         if missing_sessions:
-            messages.error(
-                request,
-                f"BB84 key exchange required! You must establish quantum sessions with: {', '.join(missing_sessions)}. "
-                "Please complete key exchange before uploading."
-            )
-            return redirect('key_exchange')
+            if context_type == 'group':
+                messages.error(
+                    request,
+                    f"Group BB84 key exchange required for group '{selected_group.name}'! "
+                    f"You must establish quantum sessions with: {', '.join(missing_sessions)}. "
+                    "Please complete group key exchange before uploading."
+                )
+                return redirect('establish_group_keys', group_id=selected_group.id)
+            else:
+                messages.error(
+                    request,
+                    f"BB84 key exchange required! You must establish quantum sessions with: {', '.join(missing_sessions)}. "
+                    "Please complete key exchange before uploading."
+                )
+                return redirect('key_exchange')
         
         # Proceed with upload if all sessions exist
         if uploaded_files and recipients:
@@ -516,17 +551,25 @@ def upload_file_view(request):
                                     'eavesdropper_present': session_result['eavesdropper_present'],
                                 }
                             else:
-                                # Use existing BB84 session (bidirectional + reusable)
-                                bb84_session = BB84Session.objects.filter(
-                                    Q(sender=request.user, receiver=recipient_user) |
-                                    Q(sender=recipient_user, receiver=request.user),
-                                    status='completed'
-                                    # Removed file__isnull - keys are reusable
-                                    # Removed expiration check - keys are permanent
-                                ).order_by('-created_at').first()
+                                # Use existing BB84 session (bidirectional + reusable + context-aware)
+                                session_filter = Q(
+                                    (Q(sender=request.user, receiver=recipient_user) |
+                                     Q(sender=recipient_user, receiver=request.user)),
+                                    status='completed',
+                                    context_type=context_type
+                                )
+                                
+                                # For group context, match the specific group
+                                if context_type == 'group' and selected_group:
+                                    session_filter &= Q(group=selected_group)
+                                else:
+                                    # For personal context, ensure group is NULL
+                                    session_filter &= Q(group__isnull=True)
+                                
+                                bb84_session = BB84Session.objects.filter(session_filter).order_by('-created_at').first()
                                 
                                 if not bb84_session:
-                                    logger.error(f"No valid BB84 session found for {recipient_email}")
+                                    logger.error(f"No valid BB84 session found for {recipient_email} in {context_type} context")
                                     continue
                                 
                                 shared_key = bb84_session.shared_key
@@ -1150,6 +1193,8 @@ def create_group_view(request):
                 
                 # Add selected members
                 selected_users = member_form.cleaned_data['selected_users']
+                pending_sessions_count = 0
+                
                 for user in selected_users:
                     from .models import GroupMembership
                     GroupMembership.objects.create(
@@ -1157,9 +1202,40 @@ def create_group_view(request):
                         user=user,
                         added_by=request.user
                     )
+                    
+                    # NEW: Establish pending BB84 session for group context
+                    from .models import BB84Session
+                    
+                    # Check if session already exists
+                    existing_session = BB84Session.objects.filter(
+                        Q(sender=request.user, receiver=user) | Q(sender=user, receiver=request.user),
+                        context_type='group',
+                        group=group
+                    ).first()
+                    
+                    if not existing_session:
+                        # Create pending group-context session
+                        BB84Session.objects.create(
+                            sender=request.user,
+                            receiver=user,
+                            status='pending',
+                            context_type='group',
+                            group=group
+                        )
+                        pending_sessions_count += 1
                 
-                messages.success(request, f'Group "{group.name}" created successfully with {selected_users.count()} members!')
-                return redirect('manage_groups')
+                messages.success(
+                    request, 
+                    f'Group "{group.name}" created successfully with {selected_users.count()} members! '
+                    f'{pending_sessions_count} group key exchange(s) pending.'
+                )
+                
+                # Redirect to group key establishment page
+                if pending_sessions_count > 0:
+                    messages.info(request, 'Please establish group keys with all members before sharing files to this group.')
+                    return redirect('establish_group_keys', group_id=group.id)
+                else:
+                    return redirect('manage_groups')
                 
             except Exception as e:
                 logger.error(f"Failed to create group for user {request.user.email}: {e}")
@@ -1251,6 +1327,61 @@ def delete_group_view(request, group_id):
     return redirect('manage_groups')
 
 
+@login_required
+def establish_group_keys_view(request, group_id):
+    """
+    View for establishing BB84 keys for a group context.
+    Shows pending group key exchanges and allows users to initiate them.
+    """
+    try:
+        group = get_object_or_404(UserGroup, id=group_id, created_by=request.user)
+        
+        # Get all group-context BB84 sessions for this group
+        group_sessions = BB84Session.objects.filter(
+            Q(sender=request.user) | Q(receiver=request.user),
+            context_type='group',
+            group=group
+        ).select_related('sender', 'receiver')
+        
+        # Separate by status
+        pending_sessions = group_sessions.filter(status='pending')
+        active_sessions = group_sessions.filter(status__in=['accepted', 'transmitting', 'sifting', 'checking'])
+        completed_sessions = group_sessions.filter(status='completed')
+        failed_sessions = group_sessions.filter(status__in=['failed', 'aborted', 'expired'])
+        
+        # Get group members without completed keys
+        all_members = group.members.exclude(id=request.user.id)
+        members_with_keys = completed_sessions.values_list('sender_id', 'receiver_id')
+        
+        # Flatten the list and get unique member IDs with completed keys
+        member_ids_with_keys = set()
+        for sender_id, receiver_id in members_with_keys:
+            if sender_id == request.user.id:
+                member_ids_with_keys.add(receiver_id)
+            else:
+                member_ids_with_keys.add(sender_id)
+        
+        members_without_keys = all_members.exclude(id__in=member_ids_with_keys)
+        
+        context = {
+            'group': group,
+            'pending_sessions': pending_sessions,
+            'active_sessions': active_sessions,
+            'completed_sessions': completed_sessions,
+            'failed_sessions': failed_sessions,
+            'members_without_keys': members_without_keys,
+            'total_members': all_members.count(),
+            'keys_established': len(member_ids_with_keys),
+        }
+        
+        return render(request, 'core/establish_group_keys.html', context)
+        
+    except Exception as e:
+        logger.error(f"Failed to load group keys page for group {group_id}: {e}")
+        messages.error(request, 'Failed to load group keys page.')
+        return redirect('manage_groups')
+
+
 def home_view(request):
     """
     Home page view.
@@ -1309,11 +1440,27 @@ def initiate_key_exchange_view(request):
     Initiate BB84 key exchange REQUEST with selected recipients.
     Creates PENDING sessions that require receiver acceptance.
     BB84 protocol runs ONLY after receiver accepts.
+    Supports both personal and group context.
     """
     recipient_emails = request.POST.getlist('recipients')
     
+    # NEW: Check for group context
+    group_id = request.GET.get('group') or request.POST.get('group')
+    selected_group = None
+    context_type = 'personal'
+    
+    if group_id:
+        try:
+            selected_group = UserGroup.objects.get(id=group_id, created_by=request.user)
+            context_type = 'group'
+        except UserGroup.DoesNotExist:
+            messages.error(request, "Selected group not found.")
+            return redirect('key_exchange')
+    
     if not recipient_emails:
         messages.error(request, "Please select at least one recipient for key exchange.")
+        if context_type == 'group':
+            return redirect('establish_group_keys', group_id=selected_group.id)
         return redirect('key_exchange')
     
     # Validate recipients exist and are not the sender
@@ -1321,6 +1468,8 @@ def initiate_key_exchange_view(request):
     
     if len(recipients) != len(recipient_emails):
         messages.error(request, "Some selected recipients are invalid.")
+        if context_type == 'group':
+            return redirect('establish_group_keys', group_id=selected_group.id)
         return redirect('key_exchange')
     
     # Check if recipients are online (optional warning)
@@ -1341,33 +1490,44 @@ def initiate_key_exchange_view(request):
     created_sessions = []
     
     for recipient in recipients:
-        # Check if there's already a pending or completed session with this recipient
-        existing_session = BB84Session.objects.filter(
+        # Check if there's already a pending or completed session with this recipient in the SAME CONTEXT
+        session_filter = Q(
             sender=request.user,
             receiver=recipient,
             status__in=['pending', 'completed'],
-            file__isnull=True  # Not yet used for file upload
-        ).order_by('-created_at').first()
+            context_type=context_type
+        )
+        
+        # For group context, match the specific group
+        if context_type == 'group' and selected_group:
+            session_filter &= Q(group=selected_group)
+        else:
+            # For personal context, ensure group is NULL
+            session_filter &= Q(group__isnull=True)
+        
+        existing_session = BB84Session.objects.filter(session_filter).order_by('-created_at').first()
         
         if existing_session:
             if existing_session.status == 'pending':
-                logger.info(f"Pending session already exists: {existing_session.session_id} for {recipient.email}")
+                logger.info(f"Pending {context_type} session already exists: {existing_session.session_id} for {recipient.email}")
                 created_sessions.append(existing_session)
                 continue
-            elif existing_session.status == 'completed' and not existing_session.is_expired():
-                logger.info(f"Reusing existing completed session {existing_session.session_id} for {recipient.email}")
+            elif existing_session.status == 'completed':
+                logger.info(f"Reusing existing completed {context_type} session {existing_session.session_id} for {recipient.email}")
                 created_sessions.append(existing_session)
                 continue
         
         # Create NEW pending session (awaiting receiver acceptance)
-        logger.info(f"Creating pending BB84 session request: {request.user.username} → {recipient.username}")
+        logger.info(f"Creating pending BB84 {context_type} session request: {request.user.username} → {recipient.username}")
         
         session = BB84Session.objects.create(
             sender=request.user,
             receiver=recipient,
             status='pending',  # Waiting for receiver to accept
             receiver_accepted=False,
-            progress_percentage=0
+            progress_percentage=0,
+            context_type=context_type,
+            group=selected_group  # NULL for personal, group object for group context
         )
         
         created_sessions.append(session)
@@ -1379,7 +1539,9 @@ def initiate_key_exchange_view(request):
             details={
                 'recipient': recipient.email,
                 'session_id': str(session.session_id),
-                'status': 'pending_receiver_acceptance'
+                'status': 'pending_receiver_acceptance',
+                'context_type': context_type,
+                'group': selected_group.name if selected_group else None
             },
             request=request,
             success=True
@@ -1389,13 +1551,23 @@ def initiate_key_exchange_view(request):
     
     # Show results to user
     if created_sessions:
-        messages.success(
-            request,
-            f"BB84 key exchange request sent to {len(created_sessions)} recipient(s). "
-            "Waiting for them to accept before quantum key exchange begins."
-        )
+        if context_type == 'group':
+            messages.success(
+                request,
+                f"BB84 group key exchange request sent to {len(created_sessions)} recipient(s) for group '{selected_group.name}'. "
+                "Waiting for them to accept before quantum key exchange begins."
+            )
+        else:
+            messages.success(
+                request,
+                f"BB84 key exchange request sent to {len(created_sessions)} recipient(s). "
+                "Waiting for them to accept before quantum key exchange begins."
+            )
     
-    # Redirect to sessions view
+    # Redirect to sessions view or group keys view
+    if context_type == 'group':
+        return redirect('establish_group_keys', group_id=selected_group.id)
+    return redirect('key_exchange')
     return redirect('bb84_sessions')
 
 

@@ -1,0 +1,212 @@
+{% extends "core/base.html" %}
+{% load static %}
+
+{% block title %}Establish Group Keys - {{ group.name }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="bg-white rounded-lg shadow-md p-6">
+        <div class="flex items-center justify-between mb-6">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">🔐 Establish Group Keys</h1>
+                <p class="text-gray-600 mt-2">Group: <strong>{{ group.name }}</strong></p>
+                <p class="text-sm text-gray-500 mt-1">{{ group.description|default:"No description" }}</p>
+            </div>
+            <a href="{% url 'manage_groups' %}" class="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-200">
+                ← Back to Groups
+            </a>
+        </div>
+
+        <!-- Progress Overview -->
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="text-lg font-semibold text-blue-900">Key Exchange Progress</h3>
+                    <p class="text-blue-700 mt-1">
+                        <strong>{{ keys_established }}</strong> of <strong>{{ total_members }}</strong> members have completed keys
+                    </p>
+                </div>
+                <div class="text-right">
+                    {% if keys_established == total_members %}
+                        <span class="inline-block bg-green-100 text-green-800 text-sm font-semibold px-3 py-1 rounded-full">
+                            ✅ All Keys Established
+                        </span>
+                    {% else %}
+                        <span class="inline-block bg-yellow-100 text-yellow-800 text-sm font-semibold px-3 py-1 rounded-full">
+                            ⏳ {{ total_members|add:"-"|add:keys_established }} Pending
+                        </span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2.5 mt-3">
+                <div class="bg-blue-600 h-2.5 rounded-full" style="width: {% widthratio keys_established total_members 100 %}%"></div>
+            </div>
+        </div>
+
+        <!-- Pending Sessions -->
+        {% if pending_sessions %}
+        <div class="mb-8">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">⏳ Pending Key Exchanges</h2>
+            <div class="space-y-3">
+                {% for session in pending_sessions %}
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center justify-between">
+                    <div>
+                        <p class="font-semibold text-gray-900">
+                            {% if session.sender == request.user %}
+                                → {{ session.receiver.username }} ({{ session.receiver.email }})
+                            {% else %}
+                                ← {{ session.sender.username }} ({{ session.sender.email }})
+                            {% endif %}
+                        </p>
+                        <p class="text-sm text-gray-600 mt-1">
+                            {% if session.sender == request.user %}
+                                Waiting for {{ session.receiver.username }} to accept
+                            {% else %}
+                                You need to accept this request
+                            {% endif %}
+                        </p>
+                        <p class="text-xs text-gray-500 mt-1">Session ID: {{ session.session_id }}</p>
+                    </div>
+                    <div>
+                        {% if session.receiver == request.user %}
+                            <a href="{% url 'accept_bb84_session' session.session_id %}" 
+                               class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-200">
+                                Accept & Run BB84
+                            </a>
+                        {% else %}
+                            <span class="text-yellow-600 text-sm font-semibold">Awaiting Response</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Active Sessions -->
+        {% if active_sessions %}
+        <div class="mb-8">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">🔄 Active Key Exchanges</h2>
+            <div class="space-y-3">
+                {% for session in active_sessions %}
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
+                    <div>
+                        <p class="font-semibold text-gray-900">
+                            {% if session.sender == request.user %}
+                                → {{ session.receiver.username }}
+                            {% else %}
+                                ← {{ session.sender.username }}
+                            {% endif %}
+                        </p>
+                        <p class="text-sm text-gray-600 mt-1">Status: {{ session.get_status_display }}</p>
+                        <p class="text-xs text-gray-500 mt-1">Progress: {{ session.progress_percentage }}%</p>
+                    </div>
+                    <a href="{% url 'bb84_session_status' session.session_id %}" 
+                       class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-200">
+                        View Status
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Completed Sessions -->
+        {% if completed_sessions %}
+        <div class="mb-8">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">✅ Established Keys</h2>
+            <div class="space-y-3">
+                {% for session in completed_sessions %}
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="font-semibold text-gray-900">
+                                {% if session.sender == request.user %}
+                                    ↔ {{ session.receiver.username }} ({{ session.receiver.email }})
+                                {% else %}
+                                    ↔ {{ session.sender.username }} ({{ session.sender.email }})
+                                {% endif %}
+                            </p>
+                            <p class="text-sm text-gray-600 mt-1">
+                                Completed: {{ session.completed_at|date:"M d, Y H:i" }}
+                            </p>
+                            {% if session.error_rate %}
+                            <p class="text-xs text-gray-500 mt-1">
+                                Error Rate: {{ session.error_rate|floatformat:4 }}
+                            </p>
+                            {% endif %}
+                        </div>
+                        <span class="text-green-600 text-2xl">✅</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Members Without Keys -->
+        {% if members_without_keys %}
+        <div class="mb-8">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">👥 Members Needing Keys</h2>
+            <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p class="text-red-800 mb-3">
+                    The following members don't have established keys for this group yet:
+                </p>
+                <ul class="space-y-2">
+                    {% for member in members_without_keys %}
+                    <li class="flex items-center justify-between">
+                        <span class="text-gray-900">
+                            {{ member.username }} ({{ member.email }})
+                        </span>
+                        <a href="{% url 'initiate_key_exchange' %}?receiver={{ member.id }}&group={{ group.id }}" 
+                           class="bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold py-1 px-3 rounded-lg transition duration-200">
+                            Initiate BB84
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Failed Sessions -->
+        {% if failed_sessions %}
+        <div class="mb-8">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">❌ Failed Sessions</h2>
+            <div class="space-y-3">
+                {% for session in failed_sessions %}
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
+                    <div>
+                        <p class="font-semibold text-gray-900">
+                            {% if session.sender == request.user %}
+                                → {{ session.receiver.username }}
+                            {% else %}
+                                ← {{ session.sender.username }}
+                            {% endif %}
+                        </p>
+                        <p class="text-sm text-red-600 mt-1">{{ session.get_status_display }}</p>
+                        <p class="text-xs text-gray-500 mt-1">Created: {{ session.created_at|date:"M d, Y H:i" }}</p>
+                    </div>
+                    <a href="{% url 'initiate_key_exchange' %}?receiver={% if session.sender == request.user %}{{ session.receiver.id }}{% else %}{{ session.sender.id }}{% endif %}&group={{ group.id }}" 
+                       class="bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-200">
+                        Retry
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Instructions -->
+        <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-2">📋 Instructions</h3>
+            <ul class="list-disc list-inside text-gray-700 space-y-1">
+                <li>Each group member must have a completed BB84 key exchange in the <strong>group context</strong></li>
+                <li>Group keys are <strong>separate</strong> from personal keys for enhanced security</li>
+                <li>You can upload files to this group only after all keys are established</li>
+                <li>Keys are permanent and can be reused for multiple file uploads</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

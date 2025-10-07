@@ -45,6 +45,11 @@
                                             </button>
                                             <ul class="dropdown-menu">
                                                 <li>
+                                                    <a href="{% url 'establish_group_keys' group.id %}" class="dropdown-item">
+                                                        <i class="bi bi-key me-2"></i>Manage Group Keys
+                                                    </a>
+                                                </li>
+                                                <li>
                                                     <a href="{% url 'edit_group' group.id %}" class="dropdown-item">
                                                         <i class="bi bi-pencil me-2"></i>Edit Group
                                                     </a>

@@ -40,6 +40,7 @@ urlpatterns = [
     path('groups/create/', views.create_group_view, name='create_group'),
     path('groups/<int:group_id>/edit/', views.edit_group_view, name='edit_group'),
     path('groups/<int:group_id>/delete/', views.delete_group_view, name='delete_group'),
+    path('groups/<int:group_id>/establish-keys/', views.establish_group_keys_view, name='establish_group_keys'),
     
     # API endpoints for backend testing
     path('api/status/', api_views.api_status, name='api_status'),

@@ -38,6 +38,7 @@
                         <div class="card-body">
                             <form method="post" enctype="multipart/form-data" id="uploadForm">
                                 {% csrf_token %}
+                                <input type="hidden" name="group" id="selected_group_input" value="">
                                 
                                 <!-- File Selection -->
                                 <div class="mb-4">
@@ -126,8 +127,13 @@
                                 <!-- Groups Section -->
                                 {% if user_groups %}
                                 <div class="mb-3">
-                                    <label for="group_select" class="form-label small text-secondary">
-                                        <i class="bi bi-people me-1"></i>Quick Select from Groups:
+                                    <label for="group_select" class="form-label small text-secondary d-flex justify-content-between align-items-center gap-2">
+                                        <span>
+                                            <i class="bi bi-people me-1"></i>Quick Select from Groups:
+                                        </span>
+                                        <button type="button" class="btn btn-link btn-sm p-0 d-none" id="clearGroupContext">
+                                            <i class="bi bi-x-circle me-1"></i>Clear group context
+                                        </button>
                                     </label>
                                     <select class="form-select form-select-sm" id="group_select">
                                         <option value="">Choose a group...</option>
@@ -137,6 +143,11 @@
                                             </option>
                                         {% endfor %}
                                     </select>
+                                    <div id="groupContextDisplay" class="alert alert-primary py-2 px-3 mt-2 d-none" role="alert">
+                                        <i class="bi bi-shield-check me-2"></i>
+                                        <span class="fw-semibold">Uploading using group context:</span>
+                                        <span id="currentGroupName" class="ms-1"></span>
+                                    </div>
                                     <div class="form-text text-muted small">
                                         Select a group to quickly add all its members as recipients.
                                         <a href="{% url 'manage_groups' %}" class="text-decoration-none">Manage Groups</a>
@@ -366,6 +377,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const fileCount = document.getElementById('fileCount');
     const totalSize = document.getElementById('totalSize');
     const groupSelect = document.getElementById('group_select');
+    const selectedGroupInput = document.getElementById('selected_group_input');
+    const groupContextDisplay = document.getElementById('groupContextDisplay');
+    const currentGroupName = document.getElementById('currentGroupName');
+    const clearGroupBtn = document.getElementById('clearGroupContext');
 
     // Store all user options for filtering
     const allOptions = Array.from(userSelect.options).filter(option => option.value !== '');
@@ -376,6 +391,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if (this.value) {
                 const selectedOption = this.options[this.selectedIndex];
                 const memberEmails = selectedOption.dataset.members.split(',').filter(email => email.trim());
+                const groupName = selectedOption.textContent.split('(')[0].trim();
+                const groupId = this.value;
                 
                 // Select all group members in the user select
                 Array.from(userSelect.options).forEach(option => {
@@ -385,8 +402,33 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 
                 updateSelectedUsersList();
-                this.value = ''; // Reset group selection
+                selectedGroupInput.value = groupId;
+                if (currentGroupName) {
+                    currentGroupName.textContent = groupName;
+                }
+                if (groupContextDisplay) {
+                    groupContextDisplay.classList.remove('d-none');
+                }
+                if (clearGroupBtn) {
+                    clearGroupBtn.classList.remove('d-none');
+                }
+                this.value = ''; // Reset group selection so users can pick another if needed
             }
+        });
+    }
+
+    if (clearGroupBtn) {
+        clearGroupBtn.addEventListener('click', function() {
+            if (selectedGroupInput) {
+                selectedGroupInput.value = '';
+            }
+            if (groupContextDisplay) {
+                groupContextDisplay.classList.add('d-none');
+            }
+            if (currentGroupName) {
+                currentGroupName.textContent = '';
+            }
+            clearGroupBtn.classList.add('d-none');
         });
     }
     

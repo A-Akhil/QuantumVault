@@ -354,6 +354,25 @@ class BB84Session(models.Model):
         blank=True
     )
     
+    # Context-aware sessions (NEW: separate keys for personal vs group communications)
+    context_type = models.CharField(
+        max_length=20,
+        choices=[
+            ('personal', 'Personal (one-on-one)'),
+            ('group', 'Group Context')
+        ],
+        default='personal',
+        help_text="Whether this session is for personal or group communication"
+    )
+    group = models.ForeignKey(
+        UserGroup,
+        on_delete=models.CASCADE,
+        related_name='bb84_sessions',
+        null=True,
+        blank=True,
+        help_text="Group this session belongs to (null for personal sessions)"
+    )
+    
     # Session state
     STATUS_CHOICES = [
         ('pending', 'Pending - Waiting for receiver acceptance'),
@@ -485,6 +504,12 @@ class BB84Session(models.Model):
             models.Index(fields=['sender', 'receiver', 'status']),
             models.Index(fields=['session_id']),
             models.Index(fields=['status', 'created_at']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['sender', 'receiver', 'context_type', 'group'],
+                name='unique_bb84_session_per_context'
+            )
         ]
 
     def __str__(self):

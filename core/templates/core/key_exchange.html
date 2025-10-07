@@ -62,6 +62,15 @@
                                                 {% else %}bg-info{% endif %}">
                                                 {{ session.get_status_display }}
                                             </span>
+                                            {% if session.context_type == 'group' %}
+                                                <br><span class="badge bg-primary mt-1">
+                                                    <i class="bi bi-people"></i> Group: {{ session.group.name }}
+                                                </span>
+                                            {% else %}
+                                                <br><span class="badge bg-secondary mt-1">
+                                                    <i class="bi bi-person"></i> Personal
+                                                </span>
+                                            {% endif %}
                                             {% if session.eavesdropper_present %}
                                                 <br><small class="text-danger"><i class="bi bi-eye-slash"></i> Eavesdropper Detected</small>
                                             {% endif %}
@@ -153,6 +162,15 @@
                                                 {% else %}bg-info{% endif %}">
                                                 {{ session.get_status_display }}
                                             </span>
+                                            {% if session.context_type == 'group' %}
+                                                <br><span class="badge bg-primary mt-1">
+                                                    <i class="bi bi-people"></i> Group: {{ session.group.name }}
+                                                </span>
+                                            {% else %}
+                                                <br><span class="badge bg-secondary mt-1">
+                                                    <i class="bi bi-person"></i> Personal
+                                                </span>
+                                            {% endif %}
                                             {% if session.status == 'pending' and not session.receiver_accepted %}
                                                 <br><small class="text-muted"><i class="bi bi-hourglass"></i> Awaiting acceptance</small>
                                             {% endif %}

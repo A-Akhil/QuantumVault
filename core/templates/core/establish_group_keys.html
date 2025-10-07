@@ -39,7 +39,7 @@
                 </div>
             </div>
             <div class="w-full bg-gray-200 rounded-full h-2.5 mt-3">
-                <div class="bg-blue-600 h-2.5 rounded-full" style="width: {% widthratio keys_established total_members 100 %}%"></div>
+                <div class="bg-blue-600 h-2.5 rounded-full group-progress-bar" data-progress="{{ progress_percent }}"></div>
             </div>
         </div>
 
@@ -209,4 +209,13 @@
         </div>
     </div>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.group-progress-bar[data-progress]').forEach((bar) => {
+        const progress = parseFloat(bar.dataset.progress);
+        const clamped = Math.max(0, Math.min(Number.isNaN(progress) ? 0 : progress, 100));
+        bar.style.width = `${clamped}%`;
+    });
+});
+</script>
 {% endblock %}

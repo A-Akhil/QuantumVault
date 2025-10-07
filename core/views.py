@@ -1363,6 +1363,12 @@ def establish_group_keys_view(request, group_id):
         
         members_without_keys = all_members.exclude(id__in=member_ids_with_keys)
         
+        total_members = all_members.count()
+        keys_established = len(member_ids_with_keys)
+        progress_percent = 0
+        if total_members:
+            progress_percent = min(100, round((keys_established / total_members) * 100, 2))
+
         context = {
             'group': group,
             'pending_sessions': pending_sessions,
@@ -1370,8 +1376,9 @@ def establish_group_keys_view(request, group_id):
             'completed_sessions': completed_sessions,
             'failed_sessions': failed_sessions,
             'members_without_keys': members_without_keys,
-            'total_members': all_members.count(),
-            'keys_established': len(member_ids_with_keys),
+            'total_members': total_members,
+            'keys_established': keys_established,
+            'progress_percent': progress_percent,
         }
         
         return render(request, 'core/establish_group_keys.html', context)

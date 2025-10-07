@@ -7,7 +7,7 @@
     <div class="row">
         <div class="col-12">
             <!-- Page Header -->
-            <div class="quantum-card mb-4">
+            <div class="quantum-card mb-4" id="sentSessionsCard">
                 <div class="card-header">
                     <div class="d-flex align-items-center justify-content-between">
                         <div>
@@ -134,7 +134,7 @@
             </div>
 
             <!-- Received Sessions -->
-            <div class="quantum-card">
+            <div class="quantum-card" id="receivedSessionsCard">
                 <div class="card-header">
                     <h5 class="mb-0 fw-bold">
                         <i class="bi bi-inbox me-2 text-success"></i>Received Sessions (You as Receiver)
@@ -324,6 +324,45 @@
 </div>
 
 <script>
+let isRefreshingBb84Sessions = false;
+
+async function fetchBb84SessionsDom() {
+    const response = await fetch(window.location.href, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+        credentials: 'same-origin',
+    });
+
+    const html = await response.text();
+    const parser = new DOMParser();
+    return parser.parseFromString(html, 'text/html');
+}
+
+function swapSessionsSection(doc, id) {
+    const current = document.getElementById(id);
+    const replacement = doc.getElementById(id);
+    if (current && replacement) {
+        current.replaceWith(replacement);
+    }
+}
+
+async function refreshSessionsTables() {
+    if (isRefreshingBb84Sessions) {
+        return;
+    }
+    isRefreshingBb84Sessions = true;
+
+    try {
+        const doc = await fetchBb84SessionsDom();
+        ['sentSessionsCard', 'receivedSessionsCard'].forEach((id) => swapSessionsSection(doc, id));
+    } catch (error) {
+        console.error('Error refreshing BB84 sessions:', error);
+    } finally {
+        isRefreshingBb84Sessions = false;
+    }
+}
+
 let currentSessionId = null;
 let timelineInterval = null;
 
@@ -390,8 +429,8 @@ function refreshTimeline() {
                 timelineInterval = null;
                 showProtocolSummary(data);
                 
-                // Reload page after 3 seconds to show updated status
-                setTimeout(() => location.reload(), 3000);
+                // Refresh listings after completion to keep view aligned
+                setTimeout(() => refreshSessionsTables(), 500);
             }
         })
         .catch(error => {
@@ -469,12 +508,12 @@ function showProtocolSummary(data) {
     document.getElementById('summary-eavesdropper').textContent = data.summary?.eavesdropper || 'None';
 }
 
-// Auto-refresh page to update session statuses
+// Auto-refresh page to update session statuses without full reload
 setInterval(() => {
-    // Only reload if no modal is open
-    if (!document.querySelector('.modal.show')) {
-        location.reload();
+    if (document.hidden || document.querySelector('.modal.show')) {
+        return;
     }
+    refreshSessionsTables();
 }, 10000); // Refresh every 10 seconds
 </script>
 

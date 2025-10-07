@@ -25,6 +25,7 @@
                 </div>
             </div>
 
+            <div id="receivedSessionsSection">
             <!-- Received Sessions (Pending Your Acceptance) -->
             {% if received_sessions %}
             <div class="quantum-card mb-4">
@@ -145,8 +146,17 @@
                     </div>
                 </div>
             </div>
+            {% else %}
+            <div class="quantum-card mb-4">
+                <div class="card-body text-center text-muted py-5">
+                    <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                    <p class="mb-0 mt-2">No pending BB84 requests at the moment.</p>
+                </div>
+            </div>
             {% endif %}
+            </div>
 
+            <div id="sentSessionsSection">
             <!-- Sent Sessions -->
             {% if sent_sessions %}
             <div class="quantum-card mb-4">
@@ -262,7 +272,15 @@
                     </div>
                 </div>
             </div>
+            {% else %}
+            <div class="quantum-card mb-4">
+                <div class="card-body text-center text-muted py-5">
+                    <i class="bi bi-arrow-up-right-circle" style="font-size: 2rem;"></i>
+                    <p class="mb-0 mt-2">You haven't initiated any key exchanges yet.</p>
+                </div>
+            </div>
             {% endif %}
+            </div>
 
             <!-- Initiate New Key Exchange -->
             <div class="row">
@@ -353,7 +371,7 @@
                 <!-- Active Sessions Sidebar -->
                 <div class="col-lg-4">
                     <!-- Active Sessions -->
-                    <div class="quantum-card mb-3">
+                    <div class="quantum-card mb-3" id="activeSessionsSidebar">
                         <div class="card-header">
                             <h6 class="mb-0 fw-bold">
                                 <i class="bi bi-activity me-2"></i>Active Sessions
@@ -600,6 +618,92 @@ function getCsrfToken() {
     return '';
 }
 
+let isRefreshingKeyExchange = false;
+
+async function fetchKeyExchangeDom() {
+    const response = await fetch(window.location.href, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+        credentials: 'same-origin',
+    });
+
+    const html = await response.text();
+    const parser = new DOMParser();
+    return parser.parseFromString(html, 'text/html');
+}
+
+function swapSectionFromDoc(doc, id) {
+    const current = document.getElementById(id);
+    const replacement = doc.getElementById(id);
+    if (current && replacement) {
+        current.replaceWith(replacement);
+    }
+}
+
+async function refreshKeyExchangeSections() {
+    if (isRefreshingKeyExchange) return;
+    isRefreshingKeyExchange = true;
+
+    try {
+        const doc = await fetchKeyExchangeDom();
+        ['receivedSessionsSection', 'sentSessionsSection', 'activeSessionsSidebar'].forEach((id) => swapSectionFromDoc(doc, id));
+        bindForceInterceptButtons();
+    } catch (error) {
+        console.error('Error refreshing key exchange sections:', error);
+    } finally {
+        isRefreshingKeyExchange = false;
+    }
+}
+
+function bindForceInterceptButtons(scope = document) {
+    scope.querySelectorAll('.force-intercept-btn').forEach((button) => {
+        if (button.dataset.bound === 'true') {
+            return;
+        }
+
+        button.addEventListener('click', () => handleForceInterceptToggle(button));
+        button.dataset.bound = 'true';
+    });
+}
+
+function handleForceInterceptToggle(button) {
+    const sessionId = button.dataset.session;
+    const shouldForce = button.dataset.force === 'true';
+    const originalHtml = button.innerHTML;
+
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Processing';
+
+    fetch(`/eavesdropper/sessions/${sessionId}/force/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken(),
+        },
+        body: JSON.stringify({ force: shouldForce }),
+    })
+        .then((response) => response.json().then((data) => ({ status: response.status, data })))
+        .then(({ status, data }) => {
+            if (status >= 200 && status < 300 && data.success) {
+                alert(data.message || 'Updated force intercept setting.');
+                return refreshKeyExchangeSections();
+            }
+
+            throw new Error(data.error || data.message || 'Failed to update session.');
+        })
+        .catch((error) => {
+            console.error('Error forcing intercept:', error);
+            alert(`Error: ${error.message}`);
+        })
+        .finally(() => {
+            if (document.body.contains(button)) {
+                button.disabled = false;
+                button.innerHTML = originalHtml;
+            }
+        });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const userSelect = document.getElementById('user_select');
     const userSearch = document.getElementById('userSearch');
@@ -682,42 +786,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    document.querySelectorAll('.force-intercept-btn').forEach((button) => {
-        button.addEventListener('click', function() {
-            const sessionId = button.dataset.session;
-            const shouldForce = button.dataset.force === 'true';
-            const originalHtml = button.innerHTML;
+    bindForceInterceptButtons();
 
-            button.disabled = true;
-            button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Processing';
-
-            fetch(`/eavesdropper/sessions/${sessionId}/force/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCsrfToken(),
-                },
-                body: JSON.stringify({ force: shouldForce }),
-            })
-                .then((response) => response.json().then((data) => ({ status: response.status, data })))
-                .then(({ status, data }) => {
-                    if (status >= 200 && status < 300 && data.success) {
-                        alert(data.message || 'Updated force intercept setting.');
-                        window.location.reload();
-                    } else {
-                        throw new Error(data.error || data.message || 'Failed to update session.');
-                    }
-                })
-                .catch((error) => {
-                    console.error('Error forcing intercept:', error);
-                    alert(`Error: ${error.message}`);
-                })
-                .finally(() => {
-                    button.disabled = false;
-                    button.innerHTML = originalHtml;
-                });
-        });
-    });
+    setInterval(() => {
+        if (document.hidden || document.querySelector('.modal.show')) {
+            return;
+        }
+        refreshKeyExchangeSections();
+    }, 10000);
 });
 
 // Timeline modal functions
@@ -786,9 +862,9 @@ function refreshTimeline() {
                 clearInterval(timelineInterval);
                 timelineInterval = null;
                 showProtocolSummary(data);
-                
-                // Reload page after 3 seconds to show updated status
-                setTimeout(() => location.reload(), 3000);
+
+                // Refresh tables after completion to keep view in sync
+                setTimeout(() => refreshKeyExchangeSections(), 500);
             }
         })
         .catch(error => {

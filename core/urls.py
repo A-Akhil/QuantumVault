@@ -56,4 +56,5 @@ urlpatterns = [
     path('api/eavesdropper/deactivate/', eavesdropper_api.deactivate_eavesdropper_api, name='api_deactivate_eavesdropper'),
     path('api/eavesdropper/status/', eavesdropper_api.eavesdropper_status_api, name='api_eavesdropper_status'),
     path('eavesdropper/dashboard/', eavesdropper_api.eavesdropper_dashboard_view, name='eavesdropper_dashboard'),
+    path('eavesdropper/sessions/<uuid:session_id>/force/', eavesdropper_api.force_eavesdropper_session_view, name='force_eavesdropper_session'),
 ]

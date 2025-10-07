@@ -102,10 +102,33 @@
                                                         <i class="bi bi-check-circle"></i> Accept & Run BB84
                                                     </button>
                                                 </form>
-                                            {% elif session.status in 'accepted,transmitting,sifting,checking' %}
+                                                <div class="mt-2">
+                                                    {% if session.force_eavesdrop %}
+                                                        <button class="btn btn-sm btn-outline-secondary force-intercept-btn" data-session="{{ session.session_id }}" data-force="false">
+                                                            <i class="bi bi-slash-circle"></i> Cancel Force
+                                                        </button>
+                                                        <small class="d-block text-danger mt-1"><i class="bi bi-lightning-charge"></i> Force intercept armed for start</small>
+                                                    {% else %}
+                                                        <button class="btn btn-sm btn-outline-danger force-intercept-btn" data-session="{{ session.session_id }}" data-force="true">
+                                                            <i class="bi bi-lightning-charge"></i> Force Intercept on Start
+                                                        </button>
+                                                        <small class="d-block text-muted mt-1">Eve will intercept as soon as you accept.</small>
+                                                    {% endif %}
+                                                </div>
+                                            {% elif session.status == 'accepted' or session.status == 'transmitting' or session.status == 'sifting' or session.status == 'checking' %}
                                                 <button class="btn btn-sm btn-info" onclick="showTimeline('{{ session.session_id }}')">
                                                     <i class="bi bi-hourglass-split"></i> View Progress
                                                 </button>
+                                                {% if session.force_eavesdrop %}
+                                                    <button class="btn btn-sm btn-outline-secondary mt-1 force-intercept-btn" data-session="{{ session.session_id }}" data-force="false">
+                                                        <i class="bi bi-slash-circle"></i> Cancel Force
+                                                    </button>
+                                                    <small class="d-block text-danger mt-1"><i class="bi bi-lightning-charge"></i> Force intercept enabled</small>
+                                                {% else %}
+                                                    <button class="btn btn-sm btn-outline-danger mt-1 force-intercept-btn" data-session="{{ session.session_id }}" data-force="true">
+                                                        <i class="bi bi-lightning-charge"></i> Force Intercept
+                                                    </button>
+                                                {% endif %}
                                             {% elif session.status == 'completed' %}
                                                 <span class="text-success small">
                                                     <i class="bi bi-arrow-left-right"></i> Ready (Bidirectional)
@@ -198,14 +221,32 @@
                                             <small class="text-muted">{{ session.created_at|date:"M d, Y H:i" }}</small>
                                         </td>
                                         <td>
-                                            {% if session.status in 'accepted,transmitting,sifting,checking' %}
+                                            {% if session.status == 'accepted' or session.status == 'transmitting' or session.status == 'sifting' or session.status == 'checking' %}
                                                 <button class="btn btn-sm btn-info" onclick="showTimeline('{{ session.session_id }}')">
                                                     <i class="bi bi-hourglass-split"></i> View Progress
                                                 </button>
+                                                {% if session.force_eavesdrop %}
+                                                    <button class="btn btn-sm btn-outline-secondary mt-1 force-intercept-btn" data-session="{{ session.session_id }}" data-force="false">
+                                                        <i class="bi bi-slash-circle"></i> Cancel Force
+                                                    </button>
+                                                    <small class="d-block text-danger mt-1"><i class="bi bi-lightning-charge"></i> Force intercept enabled</small>
+                                                {% else %}
+                                                    <button class="btn btn-sm btn-outline-danger mt-1 force-intercept-btn" data-session="{{ session.session_id }}" data-force="true">
+                                                        <i class="bi bi-lightning-charge"></i> Force Intercept
+                                                    </button>
+                                                {% endif %}
                                             {% elif session.status == 'pending' %}
-                                                <span class="text-warning small">
-                                                    <i class="bi bi-clock"></i> Awaiting {{ session.receiver.username }}
-                                                </span>
+                                                {% if session.force_eavesdrop %}
+                                                    <button class="btn btn-sm btn-outline-secondary force-intercept-btn" data-session="{{ session.session_id }}" data-force="false">
+                                                        <i class="bi bi-slash-circle"></i> Cancel Force
+                                                    </button>
+                                                    <small class="d-block text-danger mt-1"><i class="bi bi-lightning-charge"></i> Force intercept armed for start</small>
+                                                {% else %}
+                                                    <button class="btn btn-sm btn-outline-danger force-intercept-btn" data-session="{{ session.session_id }}" data-force="true">
+                                                        <i class="bi bi-lightning-charge"></i> Force Intercept on Start
+                                                    </button>
+                                                    <small class="d-block text-muted mt-1">Eve will intercept once {{ session.receiver.username }} accepts.</small>
+                                                {% endif %}
                                             {% elif session.status == 'completed' %}
                                                 <span class="text-success small">
                                                     <i class="bi bi-arrow-left-right"></i> Ready (Bidirectional)
@@ -549,6 +590,18 @@
 </style>
 
 <script>
+function getCsrfToken() {
+    const name = 'csrftoken';
+    const cookies = document.cookie ? document.cookie.split(';') : [];
+    for (let i = 0; i < cookies.length; i += 1) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === `${name}=`) {
+            return decodeURIComponent(cookie.substring(name.length + 1));
+        }
+    }
+    return '';
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const userSelect = document.getElementById('user_select');
     const userSearch = document.getElementById('userSearch');
@@ -629,6 +682,43 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Please select at least one recipient for key exchange.');
             return;
         }
+    });
+
+    document.querySelectorAll('.force-intercept-btn').forEach((button) => {
+        button.addEventListener('click', function() {
+            const sessionId = button.dataset.session;
+            const shouldForce = button.dataset.force === 'true';
+            const originalHtml = button.innerHTML;
+
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Processing';
+
+            fetch(`/eavesdropper/sessions/${sessionId}/force/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: JSON.stringify({ force: shouldForce }),
+            })
+                .then((response) => response.json().then((data) => ({ status: response.status, data })))
+                .then(({ status, data }) => {
+                    if (status >= 200 && status < 300 && data.success) {
+                        alert(data.message || 'Updated force intercept setting.');
+                        window.location.reload();
+                    } else {
+                        throw new Error(data.error || data.message || 'Failed to update session.');
+                    }
+                })
+                .catch((error) => {
+                    console.error('Error forcing intercept:', error);
+                    alert(`Error: ${error.message}`);
+                })
+                .finally(() => {
+                    button.disabled = false;
+                    button.innerHTML = originalHtml;
+                });
+        });
     });
 });
 
@@ -804,5 +894,5 @@ function showProtocolSummary(data) {
     background: rgba(59, 130, 246, 0.05);
     transform: translateX(5px);
 }
-</script>
+</style>
 {% endblock %}

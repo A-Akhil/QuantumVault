@@ -46,7 +46,7 @@
                                         <dd class="col-sm-7">{{ active_eavesdropper.injected_by }}</dd>
                                         
                                         <dt class="col-sm-5">Intercept Probability:</dt>
-                                        <dd class="col-sm-7"><strong>{{ active_eavesdropper.intercept_probability|floatformat:2 }}</strong> ({{ active_eavesdropper.intercept_probability|floatformat:0|mul:100 }}%)</dd>
+                                        <dd class="col-sm-7"><strong>{{ active_eavesdropper.intercept_probability|floatformat:2 }}</strong> ({{ intercept_percentage }}%)</dd>
                                         
                                         <dt class="col-sm-5">Activated At:</dt>
                                         <dd class="col-sm-7">{{ active_eavesdropper.activated_at|date:"M d, Y H:i:s" }}</dd>
@@ -66,8 +66,11 @@
                                         
                                         <dt class="col-sm-6">Detection Rate:</dt>
                                         <dd class="col-sm-6">
-                                            {% if active_eavesdropper.sessions_intercepted > 0 %}
-                                                {{ active_eavesdropper.detections_count|div:active_eavesdropper.sessions_intercepted|floatformat:0|mul:100 }}%
+                                            {% if detection_rate_percentage is not None %}
+                                                {{ detection_rate_percentage|floatformat:0 }}%
+                                                {% if detection_rate is not None %}
+                                                    <small class="text-muted">({{ detection_rate|floatformat:2 }})</small>
+                                                {% endif %}
                                             {% else %}
                                                 N/A
                                             {% endif %}
@@ -82,12 +85,98 @@
                             </div>
                         </div>
                     {% else %}
-                        <div class="alert alert-info text-center">
-                            <i class="bi bi-info-circle me-2"></i>
-                            <strong>No active eavesdropper.</strong> Use the API to inject an eavesdropper into the system.
-                            <div class="mt-3">
-                                <code>POST /api/eavesdropper/inject/</code>
+                        <div class="alert alert-info mb-0">
+                            <div class="d-flex align-items-start">
+                                <i class="bi bi-info-circle me-3 fs-3"></i>
+                                <div>
+                                    <h6 class="fw-bold mb-1">No active eavesdropper detected</h6>
+                                    <p class="mb-2">Use the per-session intercept toggles below to simulate Eve. When you enable one, she will be waiting the moment the receiver accepts.</p>
+                                    <ul class="mb-0 small text-muted ps-3">
+                                        <li>Toggle <strong>Intercept</strong> on any pending request to prime Eve.</li>
+                                        <li>Use the same toggle to stop intercepting.</li>
+                                        <li>Deactivate Eve entirely once you finish testing.</li>
+                                    </ul>
+                                </div>
                             </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Pending Sessions -->
+            <div class="quantum-card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0 fw-bold">
+                        <i class="bi bi-hourglass-split me-2 text-warning"></i>Pending BB84 Requests
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if pending_sessions %}
+                        <p class="text-muted"><i class="bi bi-info-circle me-1"></i>These sessions have not started yet. Toggle intercept so Eve is waiting when the receiver accepts.</p>
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Sender → Receiver</th>
+                                        <th>Context</th>
+                                        <th>Status</th>
+                                        <th>Created</th>
+                                        <th>Intercept?</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for session in pending_sessions %}
+                                        <tr>
+                                            <td>
+                                                <div><strong>{{ session.sender.email }}</strong></div>
+                                                <div class="small text-muted"><i class="bi bi-arrow-right"></i> {{ session.receiver.email }}</div>
+                                            </td>
+                                            <td>
+                                                {% if session.context_type == 'group' %}
+                                                    <span class="badge bg-primary"><i class="bi bi-people"></i> Group</span>
+                                                    <div class="small text-muted">{{ session.group.name }}</div>
+                                                {% else %}
+                                                    <span class="badge bg-secondary"><i class="bi bi-person"></i> Personal</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if session.receiver_accepted %}
+                                                    <span class="badge bg-info">Receiver Accepted</span>
+                                                {% else %}
+                                                    <span class="badge bg-warning text-dark">Awaiting Receiver</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">{{ session.created_at|date:"M d, Y H:i" }}</small>
+                                            </td>
+                                            <td>
+                                                {% if session.force_eavesdrop %}
+                                                    <span class="badge bg-danger"><i class="bi bi-lightning-charge"></i> Yes</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">No</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if session.force_eavesdrop %}
+                                                    <button class="btn btn-sm btn-outline-secondary force-intercept-btn" data-session="{{ session.session_id }}" data-force="false">
+                                                        <i class="bi bi-slash-circle"></i> Stop Intercept
+                                                    </button>
+                                                {% else %}
+                                                    <button class="btn btn-sm btn-outline-danger force-intercept-btn" data-session="{{ session.session_id }}" data-force="true">
+                                                        <i class="bi bi-lightning-charge"></i> Intercept
+                                                    </button>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="bi bi-inbox text-muted" style="font-size: 2rem;"></i>
+                            <p class="text-muted mt-2 mb-0">No pending BB84 requests right now.</p>
                         </div>
                     {% endif %}
                 </div>
@@ -113,6 +202,7 @@
                                         <th>Progress</th>
                                         <th>Intercepted</th>
                                         <th>Started</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -131,8 +221,8 @@
                                             </td>
                                             <td>
                                                 <div class="progress" style="height: 20px; width: 100px;">
-                                                    <div class="progress-bar bg-primary" style="width: {{ session.progress_percentage }}%">
-                                                        {{ session.progress_percentage }}%
+                                                    <div class="progress-bar bg-primary" data-progress="{{ session.progress_percentage|default_if_none:0 }}">
+                                                        {{ session.progress_percentage|default_if_none:0 }}%
                                                     </div>
                                                 </div>
                                             </td>
@@ -144,9 +234,27 @@
                                                 {% else %}
                                                     <span class="badge bg-success">NO</span>
                                                 {% endif %}
+                                                {% if session.force_eavesdrop %}
+                                                    <div><small class="text-danger">Intercept waiting</small></div>
+                                                {% endif %}
                                             </td>
                                             <td>
                                                 <small class="text-muted">{{ session.created_at|date:"H:i:s" }}</small>
+                                            </td>
+                                            <td>
+                                                {% if session.status == 'accepted' or session.status == 'transmitting' or session.status == 'sifting' or session.status == 'checking' %}
+                                                    {% if session.force_eavesdrop %}
+                                                        <button class="btn btn-sm btn-outline-secondary force-intercept-btn" data-session="{{ session.session_id }}" data-force="false">
+                                                            <i class="bi bi-slash-circle me-1"></i>Stop Intercept
+                                                        </button>
+                                                    {% else %}
+                                                        <button class="btn btn-sm btn-outline-danger force-intercept-btn" data-session="{{ session.session_id }}" data-force="true">
+                                                            <i class="bi bi-lightning-charge me-1"></i>Intercept
+                                                        </button>
+                                                    {% endif %}
+                                                {% else %}
+                                                    <span class="text-muted small">-</span>
+                                                {% endif %}
                                             </td>
                                         </tr>
                                     {% endfor %}
@@ -170,54 +278,124 @@
                     </h5>
                 </div>
                 <div class="card-body">
-                    {% if recent_intercepted %}
-                        <div class="table-responsive">
-                            <table class="table table-sm">
-                                <thead>
-                                    <tr>
-                                        <th>Parties</th>
-                                        <th>Status</th>
-                                        <th>QBER</th>
-                                        <th>Detected?</th>
-                                        <th>Completed</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for session in recent_intercepted %}
-                                        <tr>
-                                            <td>
-                                                <small>{{ session.sender.email }} → {{ session.receiver.email }}</small>
-                                            </td>
-                                            <td>
-                                                <span class="badge {% if session.status == 'completed' %}bg-success{% else %}bg-danger{% endif %}">
-                                                    {{ session.status }}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                {% if session.error_rate %}
-                                                    <span class="{% if session.error_rate > 0.15 %}text-danger{% else %}text-success{% endif %}">
-                                                        {{ session.error_rate|floatformat:4 }}
-                                                    </span>
-                                                {% else %}
-                                                    N/A
-                                                {% endif %}
-                                            </td>
-                                            <td>
-                                                {% if session.error_rate and session.error_rate > 0.15 %}
-                                                    <span class="badge bg-warning">
-                                                        <i class="bi bi-exclamation-triangle"></i> DETECTED
-                                                    </span>
-                                                {% else %}
-                                                    <span class="badge bg-success">Undetected</span>
-                                                {% endif %}
-                                            </td>
-                                            <td>
-                                                <small class="text-muted">{{ session.completed_at|date:"M d, H:i" }}</small>
-                                            </td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
+                    {% if recent_intercepted_passed or recent_intercepted_failed %}
+                        <div class="row g-4">
+                            <div class="col-lg-6">
+                                <div class="border rounded h-100 p-3">
+                                    <h6 class="fw-bold text-success mb-3">
+                                        <i class="bi bi-check-circle me-2"></i>Passed (Undetected)
+                                    </h6>
+                                    {% if recent_intercepted_passed %}
+                                        <div class="table-responsive">
+                                            <table class="table table-sm align-middle mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Parties</th>
+                                                        <th>QBER</th>
+                                                        <th>Detected?</th>
+                                                        <th>Finished</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for session in recent_intercepted_passed %}
+                                                        <tr>
+                                                            <td>
+                                                                <small>{{ session.sender.email }} → {{ session.receiver.email }}</small>
+                                                            </td>
+                                                            <td>
+                                                                {% if session.error_rate %}
+                                                                    <span class="{% if session.error_rate > 0.15 %}text-danger{% else %}text-success{% endif %}">
+                                                                        {{ session.error_rate|floatformat:4 }}
+                                                                    </span>
+                                                                {% else %}
+                                                                    N/A
+                                                                {% endif %}
+                                                            </td>
+                                                            <td>
+                                                                {% if session.error_rate and session.error_rate > 0.15 %}
+                                                                    <span class="badge bg-warning">
+                                                                        <i class="bi bi-exclamation-triangle"></i> Detected
+                                                                    </span>
+                                                                {% else %}
+                                                                    <span class="badge bg-success">
+                                                                        <i class="bi bi-shield-check"></i> Undetected
+                                                                    </span>
+                                                                {% endif %}
+                                                            </td>
+                                                            <td>
+                                                                <small class="text-muted">{{ session.completed_at|default:session.updated_at|date:"M d, H:i" }}</small>
+                                                            </td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    {% else %}
+                                        <div class="text-center py-4 text-muted small">
+                                            <i class="bi bi-inbox"></i>
+                                            <p class="mb-0 mt-2">No successful interceptions yet.</p>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-lg-6">
+                                <div class="border rounded h-100 p-3">
+                                    <h6 class="fw-bold text-danger mb-3">
+                                        <i class="bi bi-exclamation-octagon me-2"></i>Failed (Detected)
+                                    </h6>
+                                    {% if recent_intercepted_failed %}
+                                        <div class="table-responsive">
+                                            <table class="table table-sm align-middle mb-0">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Parties</th>
+                                                        <th>QBER</th>
+                                                        <th>Detected?</th>
+                                                        <th>Finished</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for session in recent_intercepted_failed %}
+                                                        <tr>
+                                                            <td>
+                                                                <small>{{ session.sender.email }} → {{ session.receiver.email }}</small>
+                                                            </td>
+                                                            <td>
+                                                                {% if session.error_rate %}
+                                                                    <span class="{% if session.error_rate > 0.15 %}text-danger{% else %}text-success{% endif %}">
+                                                                        {{ session.error_rate|floatformat:4 }}
+                                                                    </span>
+                                                                {% else %}
+                                                                    N/A
+                                                                {% endif %}
+                                                            </td>
+                                                            <td>
+                                                                {% if session.error_rate and session.error_rate > 0.15 %}
+                                                                    <span class="badge bg-warning">
+                                                                        <i class="bi bi-exclamation-triangle"></i> Detected
+                                                                    </span>
+                                                                {% else %}
+                                                                    <span class="badge bg-success">
+                                                                        <i class="bi bi-shield-check"></i> Undetected
+                                                                    </span>
+                                                                {% endif %}
+                                                            </td>
+                                                            <td>
+                                                                <small class="text-muted">{{ session.completed_at|default:session.updated_at|date:"M d, H:i" }}</small>
+                                                            </td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    {% else %}
+                                        <div class="text-center py-4 text-muted small">
+                                            <i class="bi bi-inbox"></i>
+                                            <p class="mb-0 mt-2">No detected interceptions yet.</p>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
                         </div>
                     {% else %}
                         <div class="text-center py-4">
@@ -233,26 +411,83 @@
 </div>
 
 <script>
+function getCsrfToken() {
+    const name = 'csrftoken';
+    const cookies = document.cookie ? document.cookie.split(';') : [];
+    for (let i = 0; i < cookies.length; i += 1) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === `${name}=`) {
+            return decodeURIComponent(cookie.substring(name.length + 1));
+        }
+    }
+    return '';
+}
+
 function deactivateEavesdropper() {
     if (!confirm('Deactivate the active eavesdropper?')) return;
-    
+
     fetch('/api/eavesdropper/deactivate/', {
         method: 'POST',
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('Eavesdropper deactivated successfully!');
-            location.reload();
-        } else {
-            alert('Error: ' + (data.error || data.message));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Failed to deactivate eavesdropper');
-    });
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Eavesdropper deactivated successfully!');
+                location.reload();
+            } else {
+                alert('Error: ' + (data.error || data.message));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Failed to deactivate eavesdropper');
+        });
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.progress-bar[data-progress]').forEach((bar) => {
+        const progress = parseFloat(bar.dataset.progress);
+        const clamped = Math.max(0, Math.min(isNaN(progress) ? 0 : progress, 100));
+        bar.style.width = `${clamped}%`;
+    });
+
+    document.querySelectorAll('.force-intercept-btn').forEach((button) => {
+        button.addEventListener('click', () => {
+            const sessionId = button.dataset.session;
+            const shouldForce = button.dataset.force === 'true';
+            const originalHtml = button.innerHTML;
+
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Processing';
+
+            fetch(`/eavesdropper/sessions/${sessionId}/force/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken(),
+                },
+                body: JSON.stringify({ force: shouldForce }),
+            })
+                .then((response) => response.json().then((data) => ({ status: response.status, data })))
+                .then(({ status, data }) => {
+                    if (status >= 200 && status < 300 && data.success) {
+                        alert(data.message || 'Updated intercept setting.');
+                        location.reload();
+                    } else {
+                        throw new Error(data.error || data.message || 'Failed to update session.');
+                    }
+                })
+                .catch((error) => {
+                    console.error('Error forcing intercept:', error);
+                    alert(`Error: ${error.message}`);
+                })
+                .finally(() => {
+                    button.disabled = false;
+                    button.innerHTML = originalHtml;
+                });
+        });
+    });
+});
 
 // Auto-refresh every 5 seconds
 setInterval(() => location.reload(), 5000);

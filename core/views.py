@@ -1604,7 +1604,7 @@ def accept_bb84_session_view(request, session_id):
     Receiver accepts a pending BB84 session and triggers the actual quantum key exchange.
     BB84 protocol runs with 10+ second timeline for educational visualization.
     """
-    from .bb84_utils import run_bb84_protocol_with_timeline
+    from .bb84_utils import run_bb84_protocol_with_timeline, EavesdroppingDetected
     from .models import ActiveEavesdropper
     import threading
     
@@ -1628,11 +1628,31 @@ def accept_bb84_session_view(request, session_id):
         "BB84 quantum protocol starting now (10-15 seconds)..."
     )
     
-    # Check if there's an active eavesdropper in the system
+    # Check if there's an active eavesdropper in the system or a forced override
     active_eve = ActiveEavesdropper.get_active()
-    simulate_eve = active_eve is not None
-    eve_probability = active_eve.intercept_probability if simulate_eve else 0.0
-    eve_injector = active_eve.injected_by if simulate_eve else None
+    if active_eve:
+        has_forced_sessions = session.force_eavesdrop or BB84Session.objects.filter(
+            force_eavesdrop=True,
+            status__in=['pending', 'accepted', 'transmitting', 'sifting', 'checking']
+        ).exclude(pk=session.pk).exists()
+
+        if not has_forced_sessions:
+            logger.info(
+                "No sessions have force intercept enabled; auto-deactivating eavesdropper %s",
+                active_eve.eavesdropper_id,
+            )
+            active_eve.deactivate()
+            active_eve = None
+    force_override = session.force_eavesdrop
+    simulate_eve = (active_eve is not None) or force_override
+    eve_probability = active_eve.intercept_probability if active_eve else 0.0
+    if force_override:
+        eve_probability = max(eve_probability, 1.0)
+    eve_injector = None
+    if active_eve:
+        eve_injector = active_eve.injected_by
+    elif force_override:
+        eve_injector = request.user.email or 'manual-override'
     
     # Run BB84 protocol in background thread (with 10+ second timeline)
     def run_bb84_async():
@@ -1646,7 +1666,8 @@ def accept_bb84_session_view(request, session_id):
             bb84_result = run_bb84_protocol_with_timeline(
                 session=session,
                 eavesdropper_present=simulate_eve,
-                eavesdrop_probability=eve_probability
+                eavesdrop_probability=eve_probability,
+                eavesdropper_injected_by=eve_injector
             )
             
             # Update session with final results
@@ -1699,19 +1720,42 @@ def accept_bb84_session_view(request, session_id):
                 send_eavesdropper_detection_webhook(session, bb84_result)
             
         except Exception as e:
-            logger.error(f"BB84 protocol failed: {e}")
+            detection_triggered = isinstance(e, EavesdroppingDetected)
+            log_message = (
+                "BB84 protocol detected eavesdropping: %s" % e if detection_triggered
+                else "BB84 protocol failed: %s" % e
+            )
+            if detection_triggered:
+                logger.warning(log_message)
+            else:
+                logger.error(log_message)
+
             session.status = 'failed'
             session.current_phase = f'Failed: {str(e)}'
             session.progress_percentage = 0
+            session.eavesdropper_present = simulate_eve
+            session.eavesdrop_probability = eve_probability
+            session.eavesdropper_injected_by = eve_injector
+            session.shared_key = None
             session.save()
-            
+
+            if simulate_eve and active_eve:
+                active_eve.sessions_intercepted += 1
+                active_eve.total_qubits_intercepted += session.num_intercepted or 0
+                if detection_triggered:
+                    active_eve.detections_count += 1
+                active_eve.save()
+
             AuditLog.log_action(
                 user_email=session.receiver.email,
                 action='bb84_protocol_failed',
                 details={
                     'sender': session.sender.email,
                     'session_id': str(session.session_id),
-                    'error': str(e)
+                    'error': str(e),
+                    'eavesdropper_active': simulate_eve,
+                    'eavesdropper_detected': detection_triggered,
+                    'error_rate': session.error_rate,
                 },
                 request=None,
                 success=False,

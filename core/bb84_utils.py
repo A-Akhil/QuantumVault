@@ -157,7 +157,7 @@ def simulate_eavesdropper(
 
 
 def sift_key(
-    sender_bits: List[int],
+                sender_bits: List[int],
     sender_bases: List[str],
     receiver_bits: List[int],
     receiver_bases: List[str],
@@ -241,6 +241,7 @@ def run_bb84_protocol(
     eavesdrop_probability: float = 0.0,
     error_threshold: float = DEFAULT_ERROR_THRESHOLD,
     sample_size: int = DEFAULT_SAMPLE_SIZE,
+    eavesdropper_injected_by: str | None = None,
 ) -> Dict[str, object]:
     """
     Execute the full BB84 protocol and return a dictionary with results.
@@ -326,6 +327,7 @@ def run_bb84_protocol_with_timeline(
     eavesdrop_probability: float = 0.0,
     error_threshold: float = DEFAULT_ERROR_THRESHOLD,
     sample_size: int = DEFAULT_SAMPLE_SIZE,
+    eavesdropper_injected_by: str | None = None,
 ) -> Dict[str, object]:
     """
     Execute BB84 protocol with 10+ second timeline for educational visualization.
@@ -355,12 +357,23 @@ def run_bb84_protocol_with_timeline(
         raise ValueError("key_length must be positive")
     
     timeline = []
+
+    if eavesdropper_injected_by is not None:
+        session.eavesdropper_injected_by = eavesdropper_injected_by
+        session.save(update_fields=['eavesdropper_injected_by'])
     
+    session.refresh_from_db(fields=['force_eavesdrop'])
+    if session.force_eavesdrop:
+        if not eavesdropper_present:
+            eavesdropper_present = True
+        eavesdrop_probability = max(eavesdrop_probability, 1.0)
+
     logger.info(
-        "Running BB84 protocol WITH TIMELINE (length=%d, eve=%s, intercept=%.2f)",
+        "Running BB84 protocol WITH TIMELINE (length=%d, eve=%s, intercept=%.2f, forced=%s)",
         key_length,
         eavesdropper_present,
         eavesdrop_probability,
+        session.force_eavesdrop,
     )
     
     # PHASE 1: Quantum State Preparation (2 seconds)
@@ -397,6 +410,10 @@ def run_bb84_protocol_with_timeline(
     # Eavesdropper intercepts during transmission
     intercepted = 0
     if eavesdropper_present and eavesdrop_probability > 0.0:
+        # Re-check for force override in case the UI button was clicked mid-run (before intercept stage)
+        session.refresh_from_db(fields=['force_eavesdrop'])
+        if session.force_eavesdrop:
+            eavesdrop_probability = max(eavesdrop_probability, 1.0)
         session.current_phase = "Phase 2: ⚠️ Eavesdropper intercepting qubits..."
         session.save()
         timeline.append({'phase': 'eavesdropper_active', 'timestamp': timezone.now().isoformat(), 'progress': 45})
@@ -475,6 +492,21 @@ def run_bb84_protocol_with_timeline(
             error_rate * 100,
             error_threshold * 100,
         )
+        session.sender_bits = sender_bits
+        session.sender_bases = sender_bases
+        session.receiver_bases = receiver_bases
+        session.receiver_measurements = receiver_measurements
+        session.matched_indices = matched_indices
+        session.sifted_key_length = len(sifted_bits)
+        session.sampled_indices = sampled_indices
+        session.error_rate = error_rate
+        session.eavesdropper_present = eavesdropper_present
+        session.eavesdrop_probability = eavesdrop_probability
+        session.num_intercepted = intercepted
+        if eavesdropper_injected_by is not None:
+            session.eavesdropper_injected_by = eavesdropper_injected_by
+        session.shared_key = None
+        session.save()
         raise EavesdroppingDetected(
             f"Measured error rate {error_rate:.2%} exceeds threshold {error_threshold:.2%}"
         )
@@ -499,6 +531,10 @@ def run_bb84_protocol_with_timeline(
     session.phase_timeline = timeline
     session.save()
     
+    if session.force_eavesdrop:
+        session.force_eavesdrop = False
+        session.save(update_fields=['force_eavesdrop'])
+
     result = {
         'success': True,
         'sender_bits': sender_bits,
@@ -512,6 +548,7 @@ def run_bb84_protocol_with_timeline(
         'num_intercepted': intercepted,
         'shared_key': shared_key,
         'sampled_indices': sampled_indices,
+        'eavesdropper_injected_by': eavesdropper_injected_by,
         'timeline': timeline,
     }
     

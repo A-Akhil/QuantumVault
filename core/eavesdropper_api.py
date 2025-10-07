@@ -4,13 +4,15 @@ Allows external scripts to inject eavesdroppers into BB84 sessions.
 """
 
 import logging
+import json
+from django.db.models import DateTimeField
+from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from core.models import ActiveEavesdropper, BB84Session
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -196,17 +198,75 @@ def eavesdropper_dashboard_view(request):
     active_sessions = BB84Session.objects.filter(
         status__in=['accepted', 'transmitting', 'sifting', 'checking']
     ).order_by('-created_at')[:10]
+
+    pending_sessions = BB84Session.objects.filter(
+        status='pending'
+    ).order_by('-created_at')[:15]
     
     # Get recently intercepted sessions (completed or failed with eavesdropper)
-    recent_intercepted = BB84Session.objects.filter(
+    recent_intercepted_base = BB84Session.objects.filter(
         eavesdropper_present=True,
         status__in=['completed', 'failed']
-    ).order_by('-completed_at')[:20]
+    ).annotate(
+        latest_event=Coalesce('completed_at', 'updated_at', 'created_at', output_field=DateTimeField())
+    ).order_by('-latest_event')
+
+    recent_intercepted_passed = list(recent_intercepted_base.filter(status='completed')[:10])
+    recent_intercepted_failed = list(recent_intercepted_base.filter(status='failed')[:10])
+    
+    # Calculate percentages for template display
+    intercept_percentage = None
+    detection_rate = None
+    detection_rate_percentage = None
+    if active_eavesdropper:
+        intercept_percentage = round(active_eavesdropper.intercept_probability * 100, 2)
+        if active_eavesdropper.sessions_intercepted:
+            detection_rate = active_eavesdropper.detections_count / active_eavesdropper.sessions_intercepted
+            detection_rate_percentage = round(detection_rate * 100, 2)
     
     context = {
         'active_eavesdropper': active_eavesdropper,
+        'intercept_percentage': intercept_percentage,
+        'detection_rate': detection_rate,
+        'detection_rate_percentage': detection_rate_percentage,
         'active_sessions': active_sessions,
-        'recent_intercepted': recent_intercepted,
+        'pending_sessions': pending_sessions,
+        'recent_intercepted_passed': recent_intercepted_passed,
+        'recent_intercepted_failed': recent_intercepted_failed,
     }
     
     return render(request, 'core/eavesdropper_dashboard.html', context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def force_eavesdropper_session_view(request, session_id):
+    """Toggle force-eavesdrop override for a specific BB84 session."""
+    try:
+        payload = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        payload = {}
+
+    force_flag = payload.get('force', True)
+    if isinstance(force_flag, str):
+        force_flag = force_flag.lower() in {"true", "1", "yes", "on"}
+
+    session = get_object_or_404(BB84Session, session_id=session_id)
+
+    if session.status not in ['pending', 'accepted', 'transmitting', 'sifting', 'checking']:
+        return JsonResponse({
+            'success': False,
+            'error': 'Session is no longer active and cannot be intercepted.'
+        }, status=400)
+
+    session.force_eavesdrop = force_flag
+    session.save(update_fields=['force_eavesdrop', 'updated_at'])
+
+    message = 'Intercept enabled for session.' if force_flag else 'Intercept cancelled for session.'
+
+    return JsonResponse({
+        'success': True,
+        'force_eavesdrop': session.force_eavesdrop,
+        'session_id': str(session.session_id),
+        'message': message
+    })

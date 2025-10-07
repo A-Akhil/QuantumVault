@@ -469,6 +469,10 @@ class BB84Session(models.Model):
         blank=True,
         help_text="Email/ID of external entity that injected eavesdropper"
     )
+    force_eavesdrop = models.BooleanField(
+        default=False,
+        help_text="Force active eavesdropper to intercept this session (UI override)"
+    )
     
     # Timeline tracking for 10-second visualization
     phase_timeline = models.JSONField(

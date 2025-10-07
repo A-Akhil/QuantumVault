@@ -112,7 +112,6 @@
                                                         <button class="btn btn-sm btn-outline-danger force-intercept-btn" data-session="{{ session.session_id }}" data-force="true">
                                                             <i class="bi bi-lightning-charge"></i> Force Intercept on Start
                                                         </button>
-                                                        <small class="d-block text-muted mt-1">Eve will intercept as soon as you accept.</small>
                                                     {% endif %}
                                                 </div>
                                             {% elif session.status == 'accepted' or session.status == 'transmitting' or session.status == 'sifting' or session.status == 'checking' %}
@@ -245,7 +244,6 @@
                                                     <button class="btn btn-sm btn-outline-danger force-intercept-btn" data-session="{{ session.session_id }}" data-force="true">
                                                         <i class="bi bi-lightning-charge"></i> Force Intercept on Start
                                                     </button>
-                                                    <small class="d-block text-muted mt-1">Eve will intercept once {{ session.receiver.username }} accepts.</small>
                                                 {% endif %}
                                             {% elif session.status == 'completed' %}
                                                 <span class="text-success small">
